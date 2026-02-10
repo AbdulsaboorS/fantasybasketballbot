@@ -1,0 +1,48 @@
+{
+  "season": {
+    "sport": "nba",
+    "format": "h2h_points",
+    "current_record": "7-9"
+  },
+  "league": {
+    "platform": "espn",
+    "season_year": 2026,
+    "league_id": "1002087609",
+    "team_id": "REPLACE_WITH_TEAM_ID",
+    "espn_auth": {
+      "espn_s2": "AEBIxa609jFnJJQjNcfJ%2FfLSt3%2FdD9NpuQsUSbQVKYnJN%2FcBUMKQlVhCuaeCyEe6ogUS%2Bv%2F8Zu91J0qg6dWKg0zNBt7w%2BfmCp%2ByzmvUFVVdtvP6%2BasMXyoOsrIdmtyo7CpQgyOX1ZBMkUrLAbBz5lbyV380sgJ%2FuGXQjrcGE8M2UKb8C4sUKgJpGryvSKWj%2F%2F8vFycFsaJhqRuis1O0uSeuJtAv8RczHuhr%2F3Unia0wd0wDzaxSui6t69JWe5A4ciGmNyHHu2D0NNPtJWbDVfQvkNlv1fH2bXZ9Pwd36N%2FIEMIKI1NhNIpDyHUioAlnXwhE%3D",
+      "swid": "{36FC486B-3AF7-4A42-BC48-6B3AF7FA42C0}"
+    }
+  },
+  "strategy": {
+    "protection_guardrails": {
+      "untouchables": [
+        "Giannis Antetokounmpo",
+        "Joel Embiid",
+        "Donovan Mitchell",
+        "James Harden",
+        "Pascal Siakam"
+      ],
+      "drop_block_orank_better_than": 50,
+      "allow_drop_if_season_ending_injury": true
+    },
+    "tiered_streaming": {
+      "enabled": true,
+      "tier_3_roster_slots": [
+        "SLOT_11",
+        "SLOT_12",
+        "SLOT_13"
+      ],
+      "min_free_agent_edge_7d_avg": 0.15,
+      "min_points_gain": 3.0,
+      "weekly_transaction_limit": 7,
+      "dry_run": true
+    }
+  },
+  "tracking": {
+    "moves_made_today": [],
+    "last_run_utc": null,
+    "weekly_transactions_used": 0,
+    "plan_for_tomorrow": "Protect core assets, optimize daily lineup, and stream only from Tier 3 when edge >= 15%."
+  }
+}
