@@ -1,0 +1,10 @@
+{
+  "league": {
+    "league_id": "LEAGUE_ID_PLACEHOLDER",
+    "team_id": "TEAM_ID_PLACEHOLDER",
+    "espn_auth": {
+      "swid": "SWID_PLACEHOLDER",
+      "espn_s2": "ESPN_S2_PLACEHOLDER"
+    }
+  }
+}
