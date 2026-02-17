@@ -1,0 +1,161 @@
+# Project Context
+
+**Agents:** Read **claude.md** first for handoff and rules. This file is the **single source of truth** for **project/code state** only (structure, tech, config, changelog). User/season context and run log live in **CONTEXT.md**; do not duplicate that content here.
+
+**Rule:** After any *confirmed* code/config change, update the **Changelog** section below with:
+- what changed (files + intent)
+- how to test
+- any follow-up notes / gotchas
+
+---
+
+## Mission
+
+Automate ESPN Fantasy Basketball roster management for the team **"Jarquavious Flash"** (League ID: `1002087609`) to maximize points while preventing catastrophic mistakes (e.g., dropping untouchables).
+
+## Current Status (as of 2026-02-10)
+
+- **Runtime**: Python CLI (`python3 main.py`) and **Web UI** (FastAPI + React + Vite + Tailwind).
+- **ESPN library**: `espn-api`
+- **Safety**: Defaults to **DRY_RUN=True** (suggestions only)
+- **Execution UX**: CLI: confirmation prompt; Web: Execute / Decline fully / Generate new suggestions.
+- **Untouchables**: Protected via `context.json -> strategy.protection_guardrails.untouchables`
+
+## Repo Structure
+
+- `main.py`: bot logic (FantasyBot class, `get_suggestions()`, `run_daily_cycle(dry_run, api_confirm)`)
+- `api/main.py`: FastAPI app – `GET /analyze`, `POST /execute`, CORS for `localhost:5173`
+- `web/`: React + Vite + TypeScript + Tailwind; proxies `/api` to backend
+- `context.json`: non-secret config + placeholders (credentials from env / `.env`)
+- `espn_transactions.py`: add/drop POST to ESPN (optional env: `ESPN_TRANSACTION_URL`, `ESPN_TRANSACTION_BODY` / `ESPN_TRANSACTION_BODY_FILE`)
+- `.env.example`, `.env` (gitignored), `claude.md`, `CONTEXT.md`, `README.md`, `CAPTURE_TRANSACTION.md`
+
+## Credentials & Config
+
+Preferred configuration order:
+1. **Environment variables** (recommended)
+2. `.env` file (loaded automatically via `python-dotenv`)
+3. `context.json` (fallback only)
+
+Required env vars:
+- `LEAGUE_ID`
+- `TEAM_ID`
+- `SWID`
+- `ESPN_S2`
+- `DRY_RUN` (optional; defaults to safe mode unless explicitly set to falsey)
+
+## Execution Semantics
+
+- **DRY_RUN=True**: prints suggestions; no ESPN mutations.
+- **DRY_RUN=False**: prints suggestions + prompts once; on `yes`, executes **streaming add/drop** via ESPN API.
+- **IR/Lineup execution**: currently **suggestion-only** (the bot identifies what should happen; execution wiring depends on available `espn-api` methods).
+- **Streaming add/drop**: executed via **`espn_transactions.add_drop()`** (direct POST to ESPN). The `espn-api` basketball League is read-only; no `drop_player`/`add_player`. Optional env: `ESPN_TRANSACTION_URL`, `ESPN_TRANSACTION_BODY` or `ESPN_TRANSACTION_BODY_FILE`. See **`CAPTURE_TRANSACTION.md`** if the default URL/body fails.
+
+---
+
+## Changelog
+
+### 2026-02-10 — Phase 1: Production-ready CLI + safety + secrets hygiene
+
+**Why:** Consolidate prior security-hardening intent, ensure credentials are not hardcoded, and add a safe “one confirmation” execution workflow.
+
+**Changes:**
+- **Environment variables + `.env` support**
+  - Updated `main.py` to load `.env` and prefer `os.getenv()` for `LEAGUE_ID`, `TEAM_ID`, `SWID`, `ESPN_S2`, `SEASON_YEAR`, `DRY_RUN`.
+  - Added stronger missing-setting errors to prevent silent misconfig.
+- **Safety/confirmation flow**
+  - `DRY_RUN` defaults to safe mode.
+  - When `DRY_RUN=False`, the bot shows **all** proposed actions then asks once: `Execute these changes? (yes/no)`.
+- **Secrets hygiene**
+  - Added `.env.example`.
+  - Added `.gitignore` (ensures `.env` is never committed).
+  - Sanitized `context.json` to use placeholders instead of real cookies.
+- **IR/Lineup suggestion improvements**
+  - IR: identify OUT players that should be moved to IR and healthy players to activate.
+  - Lineup: produce swap suggestions with points-value deltas.
+- **Docs**
+  - Added `requirements.txt`.
+  - Expanded `README.md` with setup and safe execution instructions.
+
+**Files touched:**
+- Modified: `main.py`, `context.json`, `README.md`, `.gitignore`
+- Added: `.env.example`, `requirements.txt`, `PROJECT_CONTEXT.md`
+
+**How to test locally:**
+1. `pip install -r requirements.txt`
+2. `cp .env.example .env` and fill in values
+3. `python3 main.py` (dry run suggestions)
+4. `DRY_RUN=False python3 main.py` then type `yes` to execute streaming add/drop
+
+**Notes/Gotchas:**
+- Streaming execution is live when confirmed; IR/Lineup are currently suggestions only.
+
+**Testing:** See `TESTING.md` for step-by-step install and run instructions (dry run first, then optional execution).
+
+### 2026-02-10 — Decline flow: "decline fully" vs "generate new suggestions"
+
+**Why:** After user clicks decline, give two options: exit with no changes today, or generate a new set of suggestions (loop).
+
+**Changes:**
+- **`confirm_and_execute()`** now returns `(confirmed: bool, generate_new: bool)`.
+- When user answers **no** to "Execute these changes?", prompt: **"Decline fully (no changes today) or generate new suggestions? (decline/new)"**.
+  - **decline** (or d/exit/quit): no moves today, exit.
+  - **new** (or n/generate/g): loop back and generate new suggestions (re-fetch IR, lineup, streaming).
+- **`run_daily_cycle()`** wrapped in a `while` loop (max 10 iterations) so "generate new" re-runs suggestion collection.
+
+**Files touched:** `main.py`
+
+**How to test:** Run with `DRY_RUN=False`, answer **no**, then choose **decline** (exits) or **new** (new suggestions).
+
+### 2026-02-10 — Phase 2: FastAPI + React + Tailwind Web UI
+
+**Why:** Provide a browser UI to analyze roster and execute (or decline / generate new) without using the CLI.
+
+**Changes:**
+- **`main.py`**
+  - `get_suggestions()` – returns `{ "ir": [], "lineup": [], "streaming": [] }` for the API.
+  - `run_daily_cycle(..., api_confirm=True)` – executes without interactive prompt; `api_confirm=False` returns [] (decline).
+- **`api/`**
+  - FastAPI app: `GET /analyze`, `POST /execute` (body: `confirm` or `generate_new`), `GET /health`; CORS for `http://localhost:5173`.
+  - Loads env from project root; instantiates `FantasyBot` from `main`.
+- **`web/`**
+  - Vite + React + TypeScript + Tailwind; `cn()` util; proxy `/api` → `http://localhost:8000`.
+  - UI: Analyze roster, then Execute (with confirm dialog) / Generate new suggestions / Decline fully; sections for IR, Lineup, Streaming.
+
+**Files touched:** `main.py`, `requirements.txt` (fastapi, uvicorn); added `api/`, `web/`.
+
+**How to run:**
+1. Backend: from repo root, `uvicorn api.main:app --reload --port 8000` (with `.env` set).
+2. Frontend: `cd web && npm install && npm run dev`; open `http://localhost:5173`.
+
+### 2026-02-10 — Streaming add/drop via ESPN transaction API (espn_transactions)
+
+**Why:** The `espn-api` basketball League has no `drop_player`/`add_player`; those calls caused `AttributeError`. Real add/drop requires reverse-engineering ESPN’s transaction POST.
+
+**Changes:**
+- **`espn_transactions.py`** – New module that POSTs one add/drop transaction using SWID/ESPN_S2. Uses default URL/body or optional `ESPN_TRANSACTION_URL` and `ESPN_TRANSACTION_BODY` / `ESPN_TRANSACTION_BODY_FILE` (with placeholders `{league_id}`, `{team_id}`, `{year}`, `{drop_player_id}`, `{add_player_id}`).
+- **`main.py`** – `execute_streaming()` no longer calls `league.drop_player`/`add_player`; it calls `espn_transactions.add_drop()`. On failure, returns a message with the error.
+- **`CAPTURE_TRANSACTION.md`** – Step-by-step instructions to capture one add/drop request in browser DevTools and configure the bot.
+- **`requirements.txt`** – Added `requests` for `espn_transactions`.
+
+**Files touched:** Added `espn_transactions.py`, `CAPTURE_TRANSACTION.md`; modified `main.py`, `requirements.txt`, `PROJECT_CONTEXT.md`.
+
+**How to test:** Run with `DRY_RUN=False`, confirm execute; if ESPN returns 4xx/5xx or an error in the response, follow `CAPTURE_TRANSACTION.md` to capture the real URL and body and set the env vars (or body file).
+
+**Notes/Gotchas:** Default URL/body are a best guess; if they don’t work, capturing one real request and setting `ESPN_TRANSACTION_URL` and body is required for live add/drop.
+
+### 2026-02-10 — claude.md (agent handoff) and doc split (no overlap)
+
+**Why:** Clean handoff when switching agents (e.g. Claude code agent); single place for agent instructions and clear separation between project state vs user/season context.
+
+**Changes:**
+- **claude.md** (renamed from AGENTS.md): Instructions for agents — read order (claude → PROJECT_CONTEXT → CONTEXT), key paths, rules (update PROJECT_CONTEXT changelog, no secrets in repo), how to run, current work-in-progress, handoff checklist. No project changelog or user run log.
+- **PROJECT_CONTEXT.md**: Agent pointer reads claude.md first; repo structure lists `claude.md`.
+- **CONTEXT.md**: Purpose line (user/season only); Deployment Status references CAPTURE_TRANSACTION and claude.md.
+
+**Files touched:** Renamed `AGENTS.md` → `claude.md`; modified `PROJECT_CONTEXT.md`, `CONTEXT.md`.
+
+**How to verify:** Read claude.md then PROJECT_CONTEXT then CONTEXT; confirm no duplicated content (changelog only in PROJECT_CONTEXT, run log only in CONTEXT, agent rules only in claude.md).
+
+**Also:** Default transaction host in `espn_transactions.py` set to `https://lm-api-writes.fantasy.espn.com` (correct write host; previously used non-existent `lm-api.fantasy.espn.com`).
+
