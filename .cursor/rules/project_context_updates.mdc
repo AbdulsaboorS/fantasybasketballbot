@@ -1,0 +1,15 @@
+---
+description: Always update PROJECT_CONTEXT.md after confirmed changes
+alwaysApply: true
+---
+
+# Project Context Update Rule
+
+After any **confirmed** file change (code/config/docs), you MUST update `PROJECT_CONTEXT.md`:
+
+- Add a dated entry under **Changelog**
+- Include **why**, **what changed**, **files touched**, and **how to test**
+- Note any **gotchas** or follow-ups
+
+If the change is safety/security-related (credentials, auth, DRY_RUN, execution), call it out explicitly in the changelog entry.
+

@@ -7,11 +7,11 @@
   "league": {
     "platform": "espn",
     "season_year": 2026,
-    "league_id": "1002087609",
+    "league_id": "REPLACE_WITH_LEAGUE_ID",
     "team_id": "REPLACE_WITH_TEAM_ID",
     "espn_auth": {
-      "espn_s2": "AEBIxa609jFnJJQjNcfJ%2FfLSt3%2FdD9NpuQsUSbQVKYnJN%2FcBUMKQlVhCuaeCyEe6ogUS%2Bv%2F8Zu91J0qg6dWKg0zNBt7w%2BfmCp%2ByzmvUFVVdtvP6%2BasMXyoOsrIdmtyo7CpQgyOX1ZBMkUrLAbBz5lbyV380sgJ%2FuGXQjrcGE8M2UKb8C4sUKgJpGryvSKWj%2F%2F8vFycFsaJhqRuis1O0uSeuJtAv8RczHuhr%2F3Unia0wd0wDzaxSui6t69JWe5A4ciGmNyHHu2D0NNPtJWbDVfQvkNlv1fH2bXZ9Pwd36N%2FIEMIKI1NhNIpDyHUioAlnXwhE%3D",
-      "swid": "{36FC486B-3AF7-4A42-BC48-6B3AF7FA42C0}"
+      "espn_s2": "REPLACE_WITH_ESPN_S2_COOKIE",
+      "swid": "REPLACE_WITH_SWID_COOKIE"
     }
   },
   "strategy": {
@@ -40,9 +40,11 @@
     }
   },
   "tracking": {
-    "moves_made_today": [],
-    "last_run_utc": null,
-    "weekly_transactions_used": 0,
-    "plan_for_tomorrow": "Protect core assets, optimize daily lineup, and stream only from Tier 3 when edge >= 15%."
+    "moves_made_today": [
+      "Streaming execute failed: HTTPSConnectionPool(host='lm-api.fantasy.espn.com', port=443): Max retries exceeded with url: /apis/v3/games/fba/seasons/2026/segments/0/leagues/1002087609/transactions (Caused by NameResolutionError(\"<urllib3.connection.HTTPSConnection object at 0x110c48890>: Failed to resolve 'lm-api.fantasy.espn.com' ([Errno 8] nodename nor servname provided, or not known)\"))"
+    ],
+    "last_run_utc": "2026-02-12T17:49:55.746395+00:00",
+    "weekly_transactions_used": 2,
+    "plan_for_tomorrow": "Attack tomorrow with lineup re-optimization before tip-off, then stream one Tier-3 spot only if best FA avg_points clears min_points_gain and weekly adds remain."
   }
 }
