@@ -6,7 +6,7 @@ import argparse
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +59,29 @@ def _has_game_today(player: Any, todays_teams: set[str]) -> bool:
     if not pro_team or pro_team in {"none", "fa", "free agent"}:
         return True  # unknown team — don't penalise
     return any(t == pro_team or t in pro_team or pro_team in t for t in todays_teams)
+
+
+def _games_remaining_this_week(player: Any) -> int:
+    """Return the number of games the player's pro team has from today through Sunday.
+
+    Uses player.schedule: dict of {scoring_period_id: {'team': str, 'date': datetime}}.
+    Returns 1 as a safe fallback when schedule data is unavailable.
+    """
+    schedule = getattr(player, "schedule", None)
+    if not schedule:
+        return 1
+    today = datetime.now().date()
+    week_end = today + timedelta(days=(6 - today.weekday()))  # Sunday of current week
+    count = 0
+    for entry in schedule.values():
+        game_date = entry.get("date")
+        if isinstance(game_date, datetime):
+            game_date = game_date.date()
+        if game_date is not None and today <= game_date <= week_end:
+            count += 1
+    return max(count, 1)  # floor of 1 so we never zero out a player unfairly
+
+
 DEFAULT_CONTEXT_MD_PATH = Path("CONTEXT.md")
 
 
@@ -170,6 +193,11 @@ class FantasyBot:
         return (avg_points * 0.7) + (projected_avg_points * 0.3)
 
     @staticmethod
+    def _week_remaining_value(player: Any) -> float:
+        """PPG value × games remaining this week — used for streaming decisions only."""
+        return FantasyBot.points_value(player) * _games_remaining_this_week(player)
+
+    @staticmethod
     def _player_rank(player: Any) -> int | None:
         for attr in ("rank", "projected_rank", "draft_rank"):
             value = getattr(player, attr, None)
@@ -201,7 +229,7 @@ class FantasyBot:
     def get_streaming_candidates(self) -> list[Any]:
         roster = list(getattr(self.team, "roster", []))
         droppable = [p for p in roster if self._is_droppable(p)]
-        return sorted(droppable, key=self.points_value)[:3]
+        return sorted(droppable, key=self._week_remaining_value)[:3]
 
     def _weekly_transactions_used(self) -> int:
         for attr in ("transaction_counter", "acquisitions", "moves"):
@@ -505,15 +533,17 @@ class FantasyBot:
         if not tier_3:
             return ["No eligible Tier 3 players available for streaming."]
 
-        free_agents = self.league.free_agents(size=10)
+        free_agents = self.league.free_agents(size=50)
         if not free_agents:
             return ["No free agents returned by ESPN API."]
 
-        worst_player = min(tier_3, key=lambda p: float(getattr(p, "avg_points", 0.0) or 0.0))
-        best_fa = max(free_agents, key=lambda p: float(getattr(p, "avg_points", 0.0) or 0.0))
+        worst_player = tier_3[0]  # already sorted by _week_remaining_value ascending
+        best_fa = max(free_agents, key=self._week_remaining_value)
 
-        worst_avg = float(getattr(worst_player, "avg_points", 0.0) or 0.0)
-        best_avg = float(getattr(best_fa, "avg_points", 0.0) or 0.0)
+        worst_games = _games_remaining_this_week(worst_player)
+        best_games = _games_remaining_this_week(best_fa)
+        worst_week_val = self._week_remaining_value(worst_player)
+        best_week_val = self._week_remaining_value(best_fa)
         min_points_gain = float(self.context["strategy"]["tiered_streaming"].get("min_points_gain", 3.0))
 
         weekly_used = self._weekly_transactions_used()
@@ -523,14 +553,22 @@ class FantasyBot:
         if weekly_used >= weekly_limit:
             return [f"Streaming skipped: weekly transaction limit reached ({weekly_used}/{weekly_limit})."]
 
-        if best_avg <= worst_avg + min_points_gain:
+        if best_week_val <= worst_week_val + min_points_gain:
             return [
-                f"Streaming skipped: best FA ({best_fa.name} {best_avg:.2f}) does not exceed "
-                f"{worst_player.name} ({worst_avg:.2f}) by min gain {min_points_gain:.2f}."
+                f"Streaming skipped: best FA {best_fa.name} "
+                f"({self.points_value(best_fa):.1f} PPG × {best_games}g = {best_week_val:.1f} wk pts) "
+                f"does not beat {worst_player.name} "
+                f"({self.points_value(worst_player):.1f} PPG × {worst_games}g = {worst_week_val:.1f} wk pts) "
+                f"by min gain {min_points_gain:.1f}."
             ]
 
         if dry_run:
-            return [f"WOULD DROP {worst_player.name} FOR {best_fa.name}"]
+            return [
+                f"WOULD DROP {worst_player.name} "
+                f"({self.points_value(worst_player):.1f} PPG × {worst_games}g = {worst_week_val:.1f} wk pts) "
+                f"FOR {best_fa.name} "
+                f"({self.points_value(best_fa):.1f} PPG × {best_games}g = {best_week_val:.1f} wk pts)"
+            ]
 
         drop_id = int(getattr(worst_player, "playerId", getattr(worst_player, "player_id", 0)) or 0)
         add_id = int(getattr(best_fa, "playerId", getattr(best_fa, "player_id", 0)) or 0)
@@ -561,7 +599,10 @@ class FantasyBot:
 
         self.context["tracking"]["weekly_transactions_used"] = weekly_used + 1
         actions.append(
-            f"Executed stream: dropped {worst_player.name} ({worst_avg:.2f}) for {best_fa.name} ({best_avg:.2f})."
+            f"Executed stream: dropped {worst_player.name} "
+            f"({self.points_value(worst_player):.1f} PPG × {worst_games}g = {worst_week_val:.1f} wk pts) "
+            f"for {best_fa.name} "
+            f"({self.points_value(best_fa):.1f} PPG × {best_games}g = {best_week_val:.1f} wk pts)."
         )
         return actions
 
