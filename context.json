@@ -41,10 +41,12 @@
   },
   "tracking": {
     "moves_made_today": [
-      "Streaming execute failed: HTTPSConnectionPool(host='lm-api.fantasy.espn.com', port=443): Max retries exceeded with url: /apis/v3/games/fba/seasons/2026/segments/0/leagues/1002087609/transactions (Caused by NameResolutionError(\"<urllib3.connection.HTTPSConnection object at 0x110c48890>: Failed to resolve 'lm-api.fantasy.espn.com' ([Errno 8] nodename nor servname provided, or not known)\"))"
+      "Move Giannis Antetokounmpo to IR (currently OUT)",
+      "Move Deni Avdija to IR (currently OUT)",
+      "Streaming skipped: weekly transaction limit reached (7/7)."
     ],
-    "last_run_utc": "2026-02-12T17:49:55.746395+00:00",
-    "weekly_transactions_used": 2,
+    "last_run_utc": "2026-02-24T08:42:45.935890+00:00",
+    "weekly_transactions_used": 7,
     "plan_for_tomorrow": "Attack tomorrow with lineup re-optimization before tip-off, then stream one Tier-3 spot only if best FA avg_points clears min_points_gain and weekly adds remain."
   }
 }

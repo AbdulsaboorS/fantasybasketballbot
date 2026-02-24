@@ -35,9 +35,9 @@ Update this section every run.
 - **The Plan (Tomorrow):** Set optimal daily lineup and monitor FA pool for >=15% edge in Tier 3.
 
 ## Latest Automated Run
-- **Timestamp:** 2026-02-12 17:49 UTC
+- **Timestamp:** 2026-02-24 08:42 UTC
 - **Current Record:** 7-9
-- **Moves Made Today:** Streaming execute failed: HTTPSConnectionPool(host='lm-api.fantasy.espn.com', port=443): Max retries exceeded with url: /apis/v3/games/fba/seasons/2026/segments/0/leagues/1002087609/transactions (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x110c48890>: Failed to resolve 'lm-api.fantasy.espn.com' ([Errno 8] nodename nor servname provided, or not known)"))
+- **Moves Made Today:** Move Giannis Antetokounmpo to IR (currently OUT); Move Deni Avdija to IR (currently OUT); Streaming skipped: weekly transaction limit reached (7/7).
 - **Current Untouchables:** Giannis Antetokounmpo, Joel Embiid, Donovan Mitchell, James Harden, Pascal Siakam
 - **Game Plan (Next 24h):** Attack tomorrow with lineup re-optimization before tip-off, then stream one Tier-3 spot only if best FA avg_points clears min_points_gain and weekly adds remain.
 

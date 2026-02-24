@@ -37,13 +37,30 @@ class ExecuteBody(BaseModel):
     generate_new: bool = False
 
 
+class ExecuteLineupBody(BaseModel):
+    starter_player_id: int
+    replacement_player_id: int
+    starter_slot: str = "BE"
+
+
 @app.get("/analyze")
 def analyze():
-    """Return structured suggestions (IR, lineup, streaming). No side effects."""
+    """Return structured suggestions (IR, lineup, streaming) plus team metadata.
+
+    Response shape:
+    {
+        "ir": string[],
+        "lineup": string[],
+        "streaming": string[],
+        "team": {"name": string, "record": string}
+    }
+    """
     try:
         bot = get_bot()
         suggestions = bot.get_suggestions()
-        return suggestions
+        team_name = getattr(bot.team, "team_name", "") or ""
+        record = bot.context.get("season", {}).get("current_record", "")
+        return {**suggestions, "team": {"name": team_name, "record": record}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -60,6 +77,54 @@ def execute(body: ExecuteBody):
             suggestions = bot.get_suggestions()
             return {"executed": False, "suggestions": suggestions}
         return {"executed": False, "actions": []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/lineup-status")
+def lineup_status():
+    """Return game-day lineup status: urgent swaps and questionable starters.
+
+    Response shape:
+    {
+        "urgent_swaps": [
+            {
+                "starter_name": string,
+                "starter_status": string,
+                "starter_ppg": float,
+                "replacement_name": string,
+                "replacement_ppg": float,
+                "starter_player_id": int,
+                "replacement_player_id": int,
+                "starter_slot": string
+            }
+        ],
+        "questionable": [
+            {"name": string, "status": string, "ppg": float}
+        ]
+    }
+    """
+    try:
+        bot = get_bot()
+        return bot.check_lineup_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/execute-lineup")
+def execute_lineup(body: ExecuteLineupBody):
+    """Execute a single lineup swap (bench injured starter, promote replacement).
+
+    Response: {"success": bool, "message": string}
+    """
+    try:
+        bot = get_bot()
+        message = bot.execute_lineup_swap(
+            starter_player_id=body.starter_player_id,
+            replacement_player_id=body.replacement_player_id,
+            starter_slot=body.starter_slot,
+        )
+        return {"success": "failed" not in message.lower(), "message": message}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

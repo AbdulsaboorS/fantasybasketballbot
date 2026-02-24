@@ -159,3 +159,40 @@ Required env vars:
 
 **Also:** Default transaction host in `espn_transactions.py` set to `https://lm-api-writes.fantasy.espn.com` (correct write host; previously used non-existent `lm-api.fantasy.espn.com`).
 
+### 2026-02-23 — Game-day lineup monitor + UI improvements
+
+**Why:** Starters sometimes go OUT/DTD right before tip-off. Bot now detects this and can auto-execute bench-for-starter swaps. UI now shows team name/record, Game Day Alerts panel with status badges, and one-click swap execution.
+
+**Changes:**
+- **`espn_lineup.py`** (new): ESPN lineup swap via direct POST — mirrors `espn_transactions.py`. `lineup_swap()` function with env var overrides (`ESPN_LINEUP_URL`, `ESPN_LINEUP_BODY`, `ESPN_LINEUP_BODY_FILE`). Standard NBA slot IDs built in (0=PG, 1=SG, … 9=BE, 12=IR). Default body uses `type: "LINEUP"` with `fromSlotId`/`toSlotId`.
+- **`CAPTURE_LINEUP.md`** (new): Step-by-step browser DevTools guide to capture a real lineup-change request and confirm slot IDs.
+- **`main.py`**: Added `import argparse`. New `check_lineup_status()` — checks starters for OUT/DOUBTFUL/DTD/QUESTIONABLE status, finds best healthy bench replacement, returns structured dict. New `execute_lineup_swap()` — calls `espn_lineup.lineup_swap()`, returns result string. Updated `main()` — `--mode=lineup-check` branch auto-executes urgent swaps when `DRY_RUN=False`.
+- **`api/main.py`**: `/analyze` now returns `team: {name, record}` merged into response. New `GET /lineup-status` → `check_lineup_status()`. New `POST /execute-lineup` (body: `starter_player_id`, `replacement_player_id`, `starter_slot`) → `execute_lineup_swap()`.
+- **`web/src/App.tsx`**: New types (`TeamInfo`, `UrgentSwap`, `QuestionablePlayer`, `LineupStatus`, `AnalyzeResponse`). New `StatusBadge` component (red/yellow/green). New `GameDayAlerts` component with per-swap "Swap now" button. Team name + record in header. "Check lineup now" button. `swapResult` orange banner. `checkLineup()` + `executeSwap()` functions.
+- **`.github/workflows/game_day_check.yml`** (new): Cron every 30 min 5pm–9pm EST Mon–Sat. Runs `python main.py --mode=lineup-check` with `DRY_RUN=False`.
+- **`.env.example`**: Added commented optional `ESPN_LINEUP_URL/BODY/BODY_FILE` vars.
+
+**Files touched:** Added `espn_lineup.py`, `CAPTURE_LINEUP.md`, `.github/workflows/game_day_check.yml`; modified `main.py`, `api/main.py`, `web/src/App.tsx`, `.env.example`, `PROJECT_CONTEXT.md`.
+
+**How to test:**
+1. `python3 main.py --mode=lineup-check` — lineup-check dry run (safe)
+2. Start backend + frontend, click "Check lineup now" in UI
+3. If a starter is OUT: "Game Day Alerts" panel shows orange urgent swap with "Swap now" button
+4. For live swap: `DRY_RUN=False python3 main.py --mode=lineup-check`
+
+**Notes/Gotchas:** Lineup execute will likely fail on first attempt (default body is best-guess). Follow `CAPTURE_LINEUP.md` to capture real slot IDs from browser. GitHub Actions `game_day_check.yml` needs the same 4 secrets already configured for `daily_bot.yml`.
+
+### 2026-02-23 — Fix ESPN transaction body/headers from real browser capture
+
+**Why:** Default transaction body was a guess and missing required fields; also missing required headers `x-fantasy-platform` and `x-fantasy-source`; `scoringPeriodId` was never passed.
+
+**Changes:**
+- **`espn_transactions.py`**: Updated default body to match confirmed ESPN format (`type: "FREEAGENT"`, `isLeagueManager`, `scoringPeriodId`, `items` with `toTeamId`/`fromTeamId`). Added `_HEADERS` constant with `x-fantasy-platform: espn-fantasy-web` and `x-fantasy-source: kona`. Added `scoring_period_id` parameter to `_get_transaction_body` and `add_drop`. Added `{scoring_period_id}` placeholder support for custom bodies.
+- **`main.py`**: Pass `scoring_period_id` (from `league.scoringPeriodId`) when calling `add_drop`.
+
+**Files touched:** `espn_transactions.py`, `main.py`
+
+**How to test:** `DRY_RUN=False python3 main.py` then confirm; should POST to ESPN and get 2xx (or a meaningful business error like 409, not a DNS/connection error).
+
+**Notes/Gotchas:** `league.scoringPeriodId` is set by the espn-api library on init; defaults to 0 if unavailable. Credentials (`espn_s2`, `SWID`) must be fresh — they expire; re-capture from browser cookies if you get 401/403.
+
