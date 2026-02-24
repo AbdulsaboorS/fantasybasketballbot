@@ -2,6 +2,9 @@
 
 ESPN Fantasy Basketball automation for a high-stakes H2H points season. The bot runs daily via GitHub Actions to manage IR slots, optimize your lineup, and stream free agents — with a web UI for on-demand control.
 
+Demo it here: https://fantasybasketballbot.vercel.app/
+- This show's my current team, and the changes I'm able to make!
+
 ## Features
 
 - **IR management** — flags OUT players who should be moved to IR and healthy IR players who can be activated
