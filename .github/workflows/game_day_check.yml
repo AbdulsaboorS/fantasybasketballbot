@@ -1,0 +1,65 @@
+name: Game-Day Lineup Check
+
+on:
+  schedule:
+    # Every 30 minutes from 5pm–9pm EST (22:00–02:00 UTC), Mon–Sat.
+    # NBA games typically tip off between 7pm–10pm ET.
+    # GitHub cron doesn't support time ranges, so we use four entries.
+    - cron: '0,30 22 * * 1-6'   # 5:00pm & 5:30pm EST, Mon–Sat
+    - cron: '0,30 23 * * 1-6'   # 6:00pm & 6:30pm EST, Mon–Sat
+    - cron: '0,30 0 * * 2-7'    # 7:00pm & 7:30pm EST, Mon–Sat (next UTC day)
+    - cron: '0,30 1 * * 2-7'    # 8:00pm & 8:30pm EST, Mon–Sat (next UTC day)
+  workflow_dispatch:             # Also allows manual trigger from GitHub UI
+
+jobs:
+  lineup-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Inject ESPN secrets into context
+        env:
+          LEAGUE_ID: ${{ secrets.LEAGUE_ID }}
+          SWID: ${{ secrets.SWID }}
+          ESPN_S2: ${{ secrets.ESPN_S2 }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path('context.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          data['league']['league_id'] = str(os.environ['LEAGUE_ID'])
+          data['league']['team_id'] = str(os.environ.get('TEAM_ID', data['league']['team_id']))
+          data['league']['espn_auth']['swid'] = os.environ['SWID']
+          data['league']['espn_auth']['espn_s2'] = os.environ['ESPN_S2']
+          path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+          PY
+
+      - name: Run game-day lineup check
+        env:
+          LEAGUE_ID: ${{ secrets.LEAGUE_ID }}
+          SWID: ${{ secrets.SWID }}
+          ESPN_S2: ${{ secrets.ESPN_S2 }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          # Set to False to actually execute swaps. True = dry run (log only).
+          DRY_RUN: 'False'
+          # Uncomment and add as GitHub Secrets if ESPN rejects the default body.
+          # See CAPTURE_LINEUP.md for instructions.
+          # ESPN_LINEUP_URL: ${{ secrets.ESPN_LINEUP_URL }}
+          # ESPN_LINEUP_BODY: ${{ secrets.ESPN_LINEUP_BODY }}
+        run: python main.py --mode=lineup-check

@@ -13,8 +13,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -24,38 +22,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install espn-api
+          pip install -r requirements.txt
 
-      - name: Inject ESPN secrets into context
+      - name: Run daily bot cycle
         env:
           LEAGUE_ID: ${{ secrets.LEAGUE_ID }}
           SWID: ${{ secrets.SWID }}
           ESPN_S2: ${{ secrets.ESPN_S2 }}
           TEAM_ID: ${{ secrets.TEAM_ID }}
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-
-          path = Path('context.json')
-          data = json.loads(path.read_text(encoding='utf-8'))
-          data['league']['league_id'] = str(__import__('os').environ['LEAGUE_ID'])
-          data['league']['team_id'] = str(__import__('os').environ.get('TEAM_ID', data['league']['team_id']))
-          data['league']['espn_auth']['swid'] = __import__('os').environ['SWID']
-          data['league']['espn_auth']['espn_s2'] = __import__('os').environ['ESPN_S2']
-          path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
-          PY
-
-      - name: Run daily bot cycle
+          DRY_RUN: 'false'
         run: python main.py
-
-      - name: Commit updated CONTEXT.md and context.json
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CONTEXT.md context.json
-          git diff --cached --quiet || git commit -m "chore: daily bot context update"
-
-      - name: Push updates
-        run: |
-          git push

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from dataclasses import dataclass
@@ -16,6 +17,48 @@ from espn_api.basketball import League
 load_dotenv()
 
 DEFAULT_CONTEXT_PATH = Path("context.json")
+
+
+def _get_todays_nba_team_ids() -> set[str]:
+    """Return lowercased team name variants for NBA teams playing today.
+
+    Calls ESPN's public scoreboard API (no auth required).
+    Returns an empty set on failure — callers should treat that as
+    "schedule unavailable, don't penalise any player".
+    """
+    import requests as _req
+    try:
+        resp = _req.get(
+            "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard",
+            timeout=10,
+        )
+        data = resp.json()
+        identifiers: set[str] = set()
+        for event in data.get("events", []):
+            for comp in event.get("competitions", []):
+                for competitor in comp.get("competitors", []):
+                    team = competitor.get("team", {})
+                    for key in ("abbreviation", "displayName", "shortDisplayName", "name"):
+                        val = team.get(key, "")
+                        if val:
+                            identifiers.add(val.lower())
+        return identifiers
+    except Exception:
+        return set()
+
+
+def _has_game_today(player: Any, todays_teams: set[str]) -> bool:
+    """Return True if the player's pro team plays today.
+
+    Defaults to True when the schedule is unavailable (empty set)
+    so callers never incorrectly bench a player due to an API outage.
+    """
+    if not todays_teams:
+        return True  # schedule unavailable — don't penalise anyone
+    pro_team = str(getattr(player, "proTeam", "") or "").lower().strip()
+    if not pro_team or pro_team in {"none", "fa", "free agent"}:
+        return True  # unknown team — don't penalise
+    return any(t == pro_team or t in pro_team or pro_team in t for t in todays_teams)
 DEFAULT_CONTEXT_MD_PATH = Path("CONTEXT.md")
 
 
@@ -217,21 +260,52 @@ class FantasyBot:
         return actions
 
     def optimize_lineup(self, dry_run: bool = True) -> list[str]:
-        """Optimize lineup by starting best bench players over worst starters.
-        
-        Returns list of suggested swaps. If dry_run=False and confirmed, executes swaps.
+        """Optimize lineup: first by game-count (start players with games today),
+        then by PPG (start higher-value bench players over lower-value starters).
+
+        Returns list of suggested swaps as human-readable strings.
         """
         roster = list(getattr(self.team, "roster", []))
         bench = [p for p in roster if str(getattr(p, "slot_position", "")).upper() in {"BE", "BN"}]
         starters = [p for p in roster if str(getattr(p, "slot_position", "")).upper() not in {"BE", "BN", "IR", "IL"}]
 
-        bench_sorted = sorted(bench, key=self.points_value, reverse=True)
-        starter_sorted = sorted(starters, key=self.points_value)
-
+        todays_teams = _get_todays_nba_team_ids()
         actions: list[str] = []
-        swaps = []
-        
-        for bench_player, starter_player in zip(bench_sorted, starter_sorted):
+        used_bench_ids: set[int] = set()
+
+        # Pass 1: bench starters with no game today, promote bench players that DO play.
+        # Skip starters already flagged as AT_RISK (handled by urgent_swaps elsewhere).
+        AT_RISK = {"OUT", "DOUBTFUL", "DTD"}
+        bench_with_game = sorted(
+            [p for p in bench if _has_game_today(p, todays_teams)],
+            key=self.points_value,
+            reverse=True,
+        )
+        for starter in starters:
+            if _has_game_today(starter, todays_teams):
+                continue
+            status = str(getattr(starter, "injury_status", "") or "").upper()
+            if status in AT_RISK:
+                continue  # already surfaced as an urgent swap
+            available = [p for p in bench_with_game if id(p) not in used_bench_ids]
+            if not available:
+                break
+            replacement = available[0]
+            used_bench_ids.add(id(replacement))
+            actions.append(
+                f"Start {replacement.name} (plays today, {self.points_value(replacement):.2f} PPG) "
+                f"over {starter.name} (no game today, {self.points_value(starter):.2f} PPG)"
+            )
+
+        # Pass 2: PPG optimisation on the remaining bench/starter slots.
+        remaining_bench = sorted(
+            [p for p in bench if id(p) not in used_bench_ids],
+            key=self.points_value,
+            reverse=True,
+        )
+        remaining_starters = sorted(starters, key=self.points_value)
+
+        for bench_player, starter_player in zip(remaining_bench, remaining_starters):
             if self.points_value(bench_player) > self.points_value(starter_player):
                 bench_val = self.points_value(bench_player)
                 starter_val = self.points_value(starter_player)
@@ -240,13 +314,185 @@ class FantasyBot:
                     f"Start {bench_player.name} ({bench_val:.2f} PPG) over "
                     f"{starter_player.name} ({starter_val:.2f} PPG) [+{gain:.2f}]"
                 )
-                swaps.append((bench_player, starter_player))
-        
-        # Note: ESPN API lineup changes may require specific methods
-        # The espn-api library's set_lineup() method may need to be explored
-        # For now, we return suggestions only
-        
+
         return actions
+
+    def check_lineup_status(self) -> dict:
+        """Check today's starters for injury risk and find bench replacements.
+
+        Returns:
+            {
+                "urgent_swaps": [
+                    {
+                        "starter_name": str,
+                        "starter_status": str,      # "OUT", "DOUBTFUL", "DTD"
+                        "starter_ppg": float,
+                        "replacement_name": str,
+                        "replacement_ppg": float,
+                        "starter_player_id": int,
+                        "replacement_player_id": int,
+                        "starter_slot": str,         # "PG", "SG", etc.
+                    },
+                    ...
+                ],
+                "questionable": [
+                    {"name": str, "status": str, "ppg": float},
+                    ...
+                ],
+            }
+
+        "urgent_swaps" covers OUT/DOUBTFUL/DTD starters where a healthy bench
+        player is available. "questionable" lists starters to monitor (no swap).
+        """
+        AT_RISK = {"OUT", "DOUBTFUL", "DTD"}
+        QUESTIONABLE = {"QUESTIONABLE"}
+        STARTING_SLOTS = {"PG", "SG", "SF", "PF", "C", "G", "F", "UTIL"}
+        BENCH_SLOTS = {"BE", "BN"}
+        UNAVAILABLE = AT_RISK | QUESTIONABLE | {"IR", "IL"}
+
+        roster = list(getattr(self.team, "roster", []))
+
+        starters = [
+            p for p in roster
+            if str(getattr(p, "slot_position", "")).upper() in STARTING_SLOTS
+        ]
+        bench = [
+            p for p in roster
+            if str(getattr(p, "slot_position", "")).upper() in BENCH_SLOTS
+        ]
+
+        healthy_bench = [
+            p for p in bench
+            if str(getattr(p, "injury_status", "") or "").upper() not in UNAVAILABLE
+        ]
+        healthy_bench_sorted = sorted(healthy_bench, key=self.points_value, reverse=True)
+
+        urgent_swaps: list[dict] = []
+        questionable: list[dict] = []
+
+        for starter in starters:
+            status = str(getattr(starter, "injury_status", "") or "").upper()
+            ppg = self.points_value(starter)
+            slot = str(getattr(starter, "slot_position", "")).upper()
+
+            if status in AT_RISK:
+                replacement = healthy_bench_sorted[0] if healthy_bench_sorted else None
+                if replacement is not None:
+                    starter_id = int(
+                        getattr(starter, "playerId", getattr(starter, "player_id", 0)) or 0
+                    )
+                    replacement_id = int(
+                        getattr(replacement, "playerId", getattr(replacement, "player_id", 0)) or 0
+                    )
+                    urgent_swaps.append({
+                        "starter_name": getattr(starter, "name", "Unknown"),
+                        "starter_status": status,
+                        "starter_ppg": round(ppg, 2),
+                        "replacement_name": getattr(replacement, "name", "Unknown"),
+                        "replacement_ppg": round(self.points_value(replacement), 2),
+                        "starter_player_id": starter_id,
+                        "replacement_player_id": replacement_id,
+                        "starter_slot": slot,
+                    })
+            elif status in QUESTIONABLE:
+                questionable.append({
+                    "name": getattr(starter, "name", "Unknown"),
+                    "status": status,
+                    "ppg": round(ppg, 2),
+                })
+
+        # No-game swaps: healthy starters whose pro team doesn't play today.
+        todays_teams = _get_todays_nba_team_ids()
+        no_game_swaps: list[dict] = []
+
+        for starter in starters:
+            status = str(getattr(starter, "injury_status", "") or "").upper()
+            if status in AT_RISK:
+                continue  # already in urgent_swaps
+            if _has_game_today(starter, todays_teams):
+                continue  # plays today, nothing to do
+
+            # Find the highest-PPG healthy bench player who DOES play today.
+            bench_with_game = sorted(
+                [p for p in healthy_bench if _has_game_today(p, todays_teams)],
+                key=self.points_value,
+                reverse=True,
+            )
+            if not bench_with_game:
+                continue
+
+            replacement = bench_with_game[0]
+            slot = str(getattr(starter, "slot_position", "")).upper()
+            starter_id = int(
+                getattr(starter, "playerId", getattr(starter, "player_id", 0)) or 0
+            )
+            replacement_id = int(
+                getattr(replacement, "playerId", getattr(replacement, "player_id", 0)) or 0
+            )
+            no_game_swaps.append({
+                "starter_name": getattr(starter, "name", "Unknown"),
+                "starter_status": "NO GAME",
+                "starter_ppg": round(self.points_value(starter), 2),
+                "replacement_name": getattr(replacement, "name", "Unknown"),
+                "replacement_ppg": round(self.points_value(replacement), 2),
+                "starter_player_id": starter_id,
+                "replacement_player_id": replacement_id,
+                "starter_slot": slot,
+            })
+
+        return {"urgent_swaps": urgent_swaps, "questionable": questionable, "no_game_swaps": no_game_swaps}
+
+    def execute_lineup_swap(
+        self,
+        starter_player_id: int,
+        replacement_player_id: int,
+        starter_slot: str = "BE",
+    ) -> str:
+        """Execute a single lineup swap via ESPN's transaction API.
+
+        Args:
+            starter_player_id: ESPN player ID of the injured/out starter to bench.
+            replacement_player_id: ESPN player ID of the bench player to promote.
+            starter_slot: String slot name of the starter's current position
+                          (e.g. "PG", "SG"). Used to derive the numeric slot ID.
+
+        Returns:
+            Human-readable result string (success or error message).
+
+        Note:
+            If ESPN rejects the default body, see CAPTURE_LINEUP.md and set
+            ESPN_LINEUP_BODY or ESPN_LINEUP_BODY_FILE in your .env.
+        """
+        try:
+            from espn_lineup import lineup_swap, get_slot_id
+
+            swid = self._get_setting("SWID", "league", "espn_auth", "swid") or ""
+            espn_s2 = self._get_setting("ESPN_S2", "league", "espn_auth", "espn_s2") or ""
+            swid = self._require_setting("SWID", swid)
+            espn_s2 = self._require_setting("ESPN_S2", espn_s2)
+
+            scoring_period_id = int(getattr(self.league, "scoringPeriodId", 0) or 0)
+            starter_slot_id = get_slot_id(starter_slot)
+            bench_slot_id = get_slot_id("BE")
+
+            lineup_swap(
+                league_id=int(self.league.league_id),
+                team_id=int(self.team.team_id),
+                year=int(self.league.year),
+                swid=swid,
+                espn_s2=espn_s2,
+                starter_player_id=starter_player_id,
+                replacement_player_id=replacement_player_id,
+                starter_slot_id=starter_slot_id,
+                bench_slot_id=bench_slot_id,
+                scoring_period_id=scoring_period_id,
+            )
+            return (
+                f"Lineup swap executed: promoted player {replacement_player_id} "
+                f"to {starter_slot}, benched player {starter_player_id}."
+            )
+        except Exception as e:
+            return f"Lineup swap failed: {e}"
 
     def execute_streaming(self, dry_run: bool = True) -> list[str]:
         actions: list[str] = []
@@ -294,6 +540,7 @@ class FantasyBot:
             espn_s2 = self._get_setting("ESPN_S2", "league", "espn_auth", "espn_s2") or ""
             swid = self._require_setting("SWID", swid)
             espn_s2 = self._require_setting("ESPN_S2", espn_s2)
+            scoring_period_id = int(getattr(self.league, "scoringPeriodId", 0) or 0)
             add_drop(
                 league_id=int(self.league.league_id),
                 team_id=int(self.team.team_id),
@@ -302,6 +549,7 @@ class FantasyBot:
                 espn_s2=espn_s2,
                 drop_player_id=drop_id,
                 add_player_id=add_id,
+                scoring_period_id=scoring_period_id,
             )
         except Exception as e:
             return [f"Streaming execute failed: {e}"]
@@ -514,29 +762,100 @@ class FantasyBot:
 
 def main() -> None:
     """Main entry point for the fantasy bot."""
-    # Determine dry_run mode: env var first, then context.json, default to True
+    parser = argparse.ArgumentParser(description="ESPN Fantasy Basketball Bot")
+    parser.add_argument(
+        "--mode",
+        choices=["daily", "lineup-check"],
+        default="daily",
+        help="Run mode: 'daily' (default) or 'lineup-check' for game-day monitoring.",
+    )
+    args = parser.parse_args()
+
+    bot = FantasyBot(context_path=DEFAULT_CONTEXT_PATH)
+
+    # --- Lineup-check mode (used by game_day_check.yml GitHub Action) ---
+    if args.mode == "lineup-check":
+        print("=== Game-Day Lineup Check ===")
+        print(f"League: {bot.league.league_id} | Team: {bot.team.team_name}")
+        print()
+
+        status = bot.check_lineup_status()
+        urgent_swaps = status.get("urgent_swaps", [])
+        questionable = status.get("questionable", [])
+        no_game_swaps = status.get("no_game_swaps", [])
+
+        if not urgent_swaps and not questionable and not no_game_swaps:
+            print("All starters active with games today. No lineup action needed.")
+            return
+
+        dry_run_env = os.getenv("DRY_RUN", "").lower()
+        dry_run = dry_run_env not in ("false", "0", "no")
+
+        if questionable:
+            print("Questionable starters (monitor — no auto-swap):")
+            for p in questionable:
+                print(f"  - {p['name']} ({p['status']}, {p['ppg']:.2f} PPG)")
+
+        if urgent_swaps:
+            print(f"\nUrgent swaps needed ({len(urgent_swaps)}):")
+            for swap in urgent_swaps:
+                print(
+                    f"  - Bench {swap['starter_name']} ({swap['starter_status']}) "
+                    f"→ Start {swap['replacement_name']} ({swap['replacement_ppg']:.2f} PPG)"
+                )
+            if dry_run:
+                print("\n[DRY RUN] Would execute injury swaps. Set DRY_RUN=False to execute.")
+            else:
+                print("\nExecuting injury swaps...")
+                for swap in urgent_swaps:
+                    result = bot.execute_lineup_swap(
+                        starter_player_id=swap["starter_player_id"],
+                        replacement_player_id=swap["replacement_player_id"],
+                        starter_slot=swap["starter_slot"],
+                    )
+                    print(f"  {result}")
+
+        if no_game_swaps:
+            print(f"\nNo-game starters to bench ({len(no_game_swaps)}):")
+            for swap in no_game_swaps:
+                print(
+                    f"  - Bench {swap['starter_name']} (no game today) "
+                    f"→ Start {swap['replacement_name']} ({swap['replacement_ppg']:.2f} PPG)"
+                )
+            if dry_run:
+                print("\n[DRY RUN] Would execute no-game swaps. Set DRY_RUN=False to execute.")
+            else:
+                print("\nExecuting no-game swaps...")
+                for swap in no_game_swaps:
+                    result = bot.execute_lineup_swap(
+                        starter_player_id=swap["starter_player_id"],
+                        replacement_player_id=swap["replacement_player_id"],
+                        starter_slot=swap["starter_slot"],
+                    )
+                    print(f"  {result}")
+        return
+
+    # --- Daily mode (existing behavior) ---
     dry_run_env = os.getenv("DRY_RUN", "").lower()
     if dry_run_env in ("false", "0", "no"):
+        # DRY_RUN explicitly set to false via env = automated/non-interactive mode.
+        # Skip the yes/no prompt so GitHub Actions and background runs don't crash.
         dry_run = False
+        api_confirm = True
     else:
-        # Load context to check config
         try:
-            bot = FantasyBot(context_path=DEFAULT_CONTEXT_PATH)
             dry_run = bool(bot.context.get("strategy", {}).get("tiered_streaming", {}).get("dry_run", True))
         except Exception:
-            # If we can't load context, default to True (safest)
             dry_run = True
-    
-    # Re-initialize bot (in case context loading failed above)
-    bot = FantasyBot(context_path=DEFAULT_CONTEXT_PATH)
-    
+        api_confirm = None  # interactive: show confirmation prompt
+
     print("=== ESPN Points League Daily Cycle ===")
     print(f"Dry run mode: {dry_run}")
     print(f"League: {bot.league.league_id} | Team: {bot.team.team_name}")
     print()
-    
-    actions = bot.run_daily_cycle(dry_run=dry_run)
-    
+
+    actions = bot.run_daily_cycle(dry_run=dry_run, api_confirm=api_confirm)
+
     if dry_run:
         print("\n=== Suggestions (Dry Run Mode) ===")
         for action in actions:
