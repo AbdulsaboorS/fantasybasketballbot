@@ -179,7 +179,7 @@ class FantasyBot:
 
     @staticmethod
     def _season_ending(player: Any) -> bool:
-        status = str(getattr(player, "injury_status", "") or "").upper()
+        status = str(getattr(player, "injuryStatus", "") or "").upper()
         note = str(getattr(player, "injury_note", "") or "").upper()
         flags = ("OUT FOR SEASON", "SEASON-ENDING", "IR")
         return any(flag in status or flag in note for flag in flags)
@@ -234,7 +234,7 @@ class FantasyBot:
         out_players = []
         for player in roster:
             slot = str(getattr(player, "lineupSlot", "")).upper()
-            injury_status = str(getattr(player, "injury_status", "") or "").upper()
+            injury_status = str(getattr(player, "injuryStatus", "") or "").upper()
             if injury_status == "OUT" and slot not in {"IR", "IL"}:
                 out_players.append(player)
         
@@ -242,7 +242,7 @@ class FantasyBot:
         healthy_in_ir = []
         for player in roster:
             slot = str(getattr(player, "lineupSlot", "")).upper()
-            injury_status = str(getattr(player, "injury_status", "") or "").upper()
+            injury_status = str(getattr(player, "injuryStatus", "") or "").upper()
             if slot in {"IR", "IL"} and injury_status in {"ACTIVE", "HEALTHY", ""}:
                 healthy_in_ir.append(player)
         
@@ -275,16 +275,20 @@ class FantasyBot:
 
         # Pass 1: bench starters with no game today, promote bench players that DO play.
         # Skip starters already flagged as AT_RISK (handled by urgent_swaps elsewhere).
-        AT_RISK = {"OUT", "DOUBTFUL", "DTD"}
+        AT_RISK = {"OUT", "DOUBTFUL", "DTD", "DAY_TO_DAY"}
+        healthy_bench = [
+            p for p in bench
+            if str(getattr(p, "injuryStatus", "") or "").upper() not in AT_RISK
+        ]
         bench_with_game = sorted(
-            [p for p in bench if _has_game_today(p, todays_teams)],
+            [p for p in healthy_bench if _has_game_today(p, todays_teams)],
             key=self.points_value,
             reverse=True,
         )
         for starter in starters:
             if _has_game_today(starter, todays_teams):
                 continue
-            status = str(getattr(starter, "injury_status", "") or "").upper()
+            status = str(getattr(starter, "injuryStatus", "") or "").upper()
             if status in AT_RISK:
                 continue  # already surfaced as an urgent swap
             available = [p for p in bench_with_game if id(p) not in used_bench_ids]
@@ -299,7 +303,7 @@ class FantasyBot:
 
         # Pass 2: PPG optimisation on the remaining bench/starter slots.
         remaining_bench = sorted(
-            [p for p in bench if id(p) not in used_bench_ids],
+            [p for p in healthy_bench if id(p) not in used_bench_ids],
             key=self.points_value,
             reverse=True,
         )
@@ -344,7 +348,8 @@ class FantasyBot:
         "urgent_swaps" covers OUT/DOUBTFUL/DTD starters where a healthy bench
         player is available. "questionable" lists starters to monitor (no swap).
         """
-        AT_RISK = {"OUT", "DOUBTFUL", "DTD"}
+        # ESPN API returns DAY_TO_DAY (not DTD) and DOUBTFUL for at-risk players
+        AT_RISK = {"OUT", "DOUBTFUL", "DTD", "DAY_TO_DAY"}
         QUESTIONABLE = {"QUESTIONABLE"}
         STARTING_SLOTS = {"PG", "SG", "SF", "PF", "C", "G", "F", "UT", "UTIL"}
         BENCH_SLOTS = {"BE"}
@@ -363,7 +368,7 @@ class FantasyBot:
 
         healthy_bench = [
             p for p in bench
-            if str(getattr(p, "injury_status", "") or "").upper() not in UNAVAILABLE
+            if str(getattr(p, "injuryStatus", "") or "").upper() not in UNAVAILABLE
         ]
         healthy_bench_sorted = sorted(healthy_bench, key=self.points_value, reverse=True)
 
@@ -371,7 +376,7 @@ class FantasyBot:
         questionable: list[dict] = []
 
         for starter in starters:
-            status = str(getattr(starter, "injury_status", "") or "").upper()
+            status = str(getattr(starter, "injuryStatus", "") or "").upper()
             ppg = self.points_value(starter)
             slot = str(getattr(starter, "lineupSlot", "")).upper()
 
@@ -406,7 +411,7 @@ class FantasyBot:
         no_game_swaps: list[dict] = []
 
         for starter in starters:
-            status = str(getattr(starter, "injury_status", "") or "").upper()
+            status = str(getattr(starter, "injuryStatus", "") or "").upper()
             if status in AT_RISK:
                 continue  # already in urgent_swaps
             if _has_game_today(starter, todays_teams):
