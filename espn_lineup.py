@@ -55,11 +55,12 @@ SLOT_IDS: dict[str, int] = {
     "C":    4,
     "G":    5,   # Guard flex
     "F":    6,   # Forward flex
-    "UTIL": 8,
-    "BE":   9,
-    "BN":   9,   # alias for bench
-    "IR":   12,
-    "IL":   12,  # alias for IR
+    "UTIL": 11,  # verified from live ESPN API for league 1002087609
+    "UT":   11,  # espn-api uses UT for the UTIL slot
+    "BE":   12,  # verified from live ESPN API (not 9 as standard docs suggest)
+    "BN":   12,  # alias for bench
+    "IR":   13,  # verified from live ESPN API (not 12 as standard docs suggest)
+    "IL":   13,  # alias for IR
 }
 
 

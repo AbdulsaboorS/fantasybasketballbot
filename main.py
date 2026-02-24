@@ -233,7 +233,7 @@ class FantasyBot:
         # Find players who should be moved TO IR (OUT status but not in IR slot)
         out_players = []
         for player in roster:
-            slot = str(getattr(player, "slot_position", "")).upper()
+            slot = str(getattr(player, "lineupSlot", "")).upper()
             injury_status = str(getattr(player, "injury_status", "") or "").upper()
             if injury_status == "OUT" and slot not in {"IR", "IL"}:
                 out_players.append(player)
@@ -241,7 +241,7 @@ class FantasyBot:
         # Find players who should be activated FROM IR (healthy but in IR slot)
         healthy_in_ir = []
         for player in roster:
-            slot = str(getattr(player, "slot_position", "")).upper()
+            slot = str(getattr(player, "lineupSlot", "")).upper()
             injury_status = str(getattr(player, "injury_status", "") or "").upper()
             if slot in {"IR", "IL"} and injury_status in {"ACTIVE", "HEALTHY", ""}:
                 healthy_in_ir.append(player)
@@ -266,8 +266,8 @@ class FantasyBot:
         Returns list of suggested swaps as human-readable strings.
         """
         roster = list(getattr(self.team, "roster", []))
-        bench = [p for p in roster if str(getattr(p, "slot_position", "")).upper() in {"BE", "BN"}]
-        starters = [p for p in roster if str(getattr(p, "slot_position", "")).upper() not in {"BE", "BN", "IR", "IL"}]
+        bench = [p for p in roster if str(getattr(p, "lineupSlot", "")).upper() in {"BE"}]
+        starters = [p for p in roster if str(getattr(p, "lineupSlot", "")).upper() not in {"BE", "IR"}]
 
         todays_teams = _get_todays_nba_team_ids()
         actions: list[str] = []
@@ -346,19 +346,19 @@ class FantasyBot:
         """
         AT_RISK = {"OUT", "DOUBTFUL", "DTD"}
         QUESTIONABLE = {"QUESTIONABLE"}
-        STARTING_SLOTS = {"PG", "SG", "SF", "PF", "C", "G", "F", "UTIL"}
-        BENCH_SLOTS = {"BE", "BN"}
+        STARTING_SLOTS = {"PG", "SG", "SF", "PF", "C", "G", "F", "UT", "UTIL"}
+        BENCH_SLOTS = {"BE"}
         UNAVAILABLE = AT_RISK | QUESTIONABLE | {"IR", "IL"}
 
         roster = list(getattr(self.team, "roster", []))
 
         starters = [
             p for p in roster
-            if str(getattr(p, "slot_position", "")).upper() in STARTING_SLOTS
+            if str(getattr(p, "lineupSlot", "")).upper() in STARTING_SLOTS
         ]
         bench = [
             p for p in roster
-            if str(getattr(p, "slot_position", "")).upper() in BENCH_SLOTS
+            if str(getattr(p, "lineupSlot", "")).upper() in BENCH_SLOTS
         ]
 
         healthy_bench = [
@@ -373,7 +373,7 @@ class FantasyBot:
         for starter in starters:
             status = str(getattr(starter, "injury_status", "") or "").upper()
             ppg = self.points_value(starter)
-            slot = str(getattr(starter, "slot_position", "")).upper()
+            slot = str(getattr(starter, "lineupSlot", "")).upper()
 
             if status in AT_RISK:
                 replacement = healthy_bench_sorted[0] if healthy_bench_sorted else None
@@ -422,7 +422,7 @@ class FantasyBot:
                 continue
 
             replacement = bench_with_game[0]
-            slot = str(getattr(starter, "slot_position", "")).upper()
+            slot = str(getattr(starter, "lineupSlot", "")).upper()
             starter_id = int(
                 getattr(starter, "playerId", getattr(starter, "player_id", 0)) or 0
             )
