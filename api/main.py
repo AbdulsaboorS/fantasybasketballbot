@@ -10,6 +10,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import os
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -18,9 +20,14 @@ from main import FantasyBot, DEFAULT_CONTEXT_PATH
 
 app = FastAPI(title="Fantasy Bot API", version="0.1.0")
 
+_cors_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[o.strip() for o in _cors_origins],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -125,6 +132,23 @@ def execute_lineup(body: ExecuteLineupBody):
             starter_slot=body.starter_slot,
         )
         return {"success": "failed" not in message.lower(), "message": message}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/last-run")
+def last_run():
+    """Return the most recent bot run summary from context.json tracking section."""
+    try:
+        bot = get_bot()
+        tracking = bot.context.get("tracking", {})
+        return {
+            "last_run_utc": tracking.get("last_run_utc"),
+            "moves_made_today": tracking.get("moves_made_today", []),
+            "weekly_transactions_used": tracking.get("weekly_transactions_used", 0),
+            "plan_for_tomorrow": tracking.get("plan_for_tomorrow", ""),
+            "current_record": bot.context.get("season", {}).get("current_record", ""),
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

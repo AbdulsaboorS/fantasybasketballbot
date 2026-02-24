@@ -55,6 +55,35 @@ Required env vars:
 
 ## Changelog
 
+### 2026-02-24 — Public read-only demo deployment config
+
+**Why:** Prepare the project to be hosted publicly (Railway backend + Vercel frontend) so others can view the live dashboard without being able to execute any ESPN mutations.
+
+**What changed:**
+- **`railway.toml`** (new): tells Railway how to build and start the FastAPI server (`uvicorn api.main:app --host 0.0.0.0 --port $PORT`), with health check and restart policy.
+- **`api/main.py`**: CORS `allow_origins` now reads from `CORS_ORIGINS` env var (comma-separated), falling back to `localhost:5173` for local dev. Set `CORS_ORIGINS=https://your-project.vercel.app` in Railway dashboard.
+- **`web/src/App.tsx`**:
+  - `API_BASE` now uses `import.meta.env.VITE_API_URL ?? '/api'` — dev proxy still works when unset; in Vercel prod set `VITE_API_URL=https://your-project.railway.app`.
+  - Added `READ_ONLY = import.meta.env.VITE_READ_ONLY === 'true'` constant.
+  - Execute / New suggestions / Decline buttons hidden when `READ_ONLY`.
+  - Swap button in `SwapCard` hidden when `READ_ONLY`.
+  - Confirm modal blocked when `READ_ONLY`.
+  - "View only" badge shown in header (next to team name / record) when `READ_ONLY`.
+
+**How to test:**
+- Local dev (no env vars): `npm run dev` + `uvicorn api.main:app --reload --port 8000` — all buttons visible, proxy works as before.
+- Read-only preview: `VITE_READ_ONLY=true npm run dev` — "View only" badge appears, Execute/Swap/Decline buttons hidden, confirm modal inaccessible.
+- CORS: set `CORS_ORIGINS=http://localhost:5173` as env var before starting backend and verify the header is returned.
+
+**Deployment steps (see plan doc for full detail):**
+1. Railway: new project from GitHub, add env vars (`LEAGUE_ID`, `TEAM_ID`, `ESPN_S2`, `SWID`, `DRY_RUN=True`, `CORS_ORIGINS=<vercel url>`).
+2. Vercel: import repo, root dir = `web`, add `VITE_API_URL=<railway url>` and `VITE_READ_ONLY=true`.
+
+**Gotchas:**
+- Railway injects `$PORT` automatically; never hardcode a port in `startCommand`.
+- After Vercel deploy, go back to Railway and set `CORS_ORIGINS` to the real Vercel URL, then redeploy.
+- GitHub Actions automation (`DRY_RUN=False`) is unaffected — it bypasses the hosted backend entirely.
+
 ### 2026-02-10 — Phase 1: Production-ready CLI + safety + secrets hygiene
 
 **Why:** Consolidate prior security-hardening intent, ensure credentials are not hardcoded, and add a safe “one confirmation” execution workflow.
@@ -181,6 +210,44 @@ Required env vars:
 4. For live swap: `DRY_RUN=False python3 main.py --mode=lineup-check`
 
 **Notes/Gotchas:** Lineup execute will likely fail on first attempt (default body is best-guess). Follow `CAPTURE_LINEUP.md` to capture real slot IDs from browser. GitHub Actions `game_day_check.yml` needs the same 4 secrets already configured for `daily_bot.yml`.
+
+### 2026-02-24 — Fix weekly transaction counter reset + Sleeper-inspired UI overhaul
+
+**Why:**
+1. `context.json` had `weekly_transactions_used: 7` from a prior week with no reset logic, permanently blocking streaming after 7 lifetime adds.
+2. UI was functional but plain (zinc palette, bullet lists). Redesigned to match Sleeper's aesthetic for easier daily use.
+
+**Changes:**
+
+**`main.py`:**
+- Added `_reset_counter_if_new_week()` — compares ISO week of `tracking.last_run_utc` to today; if different week (or year), resets `weekly_transactions_used` to 0 in context before the limit check.
+- Called at the top of `execute_streaming()` before reading `_weekly_transactions_used()`.
+
+**`api/main.py`:**
+- Added `GET /last-run` endpoint — returns `last_run_utc`, `moves_made_today`, `weekly_transactions_used`, `plan_for_tomorrow`, `current_record` from `context.json` tracking section.
+
+**`web/src/App.tsx`:**
+- Full visual redesign: dark navy bg (`#0d1117`), card surfaces (`#161b22`), teal-green accent (`#00d4aa`), subtle borders (`#30363d`), muted text (`#8b949e`).
+- Position badges (`PosBadge`) — colored pills per slot (PG=blue, SG=cyan, SF=green, PF=orange, C=red, G=purple, F=teal, BE=dark, IR=darker).
+- Status badges updated: smaller pills with borders, `NO GAME` variant added.
+- `LastRunPanel` — loads on mount via `/last-run`; shows timestamp, time-ago, record pill, tx count, color-coded move list (✓ teal = executed, ! amber = skipped/limit, ✕ red = error).
+- `StreamingRow` — parses `WOULD DROP ... FOR ...` strings into structured DROP/ADD row cards with colored labels.
+- `SuggestionPanel` — IR/lineup items rendered as dark card rows with teal `›` prefix (not plain bullet lists).
+- `GameDayAlerts` + `SwapCard` — injury cards with position badge, status badge, teal "Swap" pill button. All three alert sub-sections (urgent / no-game / questionable) styled consistently.
+- Action bar: teal primary button, dark bordered secondary buttons, red outline Decline.
+- Confirmation modal: darker overlay (`black/80`), `#161b22` bg, shows streaming row preview before confirming, removed confusing "not yet implemented" footnote (replaced with accurate messaging).
+- `useEffect` fetches `/last-run` on mount; re-fetches after successful execute.
+
+**Files touched:** `main.py`, `api/main.py`, `web/src/App.tsx`
+
+**How to test:**
+1. `python3 main.py` — dry run; streaming should NOT say "limit reached" if `last_run_utc` is from a prior week.
+2. `curl http://localhost:8000/last-run` — returns JSON with last run data.
+3. Open `http://localhost:5173` — new Sleeper-style UI: dark navy, teal accents, player row cards, last-run panel.
+4. Click "Analyze roster" — IR/lineup/streaming shown as styled card rows, not bullet lists.
+5. Click "Check lineup now" — Game Day Alerts with position/status badges and teal Swap button.
+
+**Notes/Gotchas:** Week reset uses Python's `isocalendar()[1]` (ISO week 1–53). Cross-year resets also handled by comparing `.year`. The `/last-run` endpoint instantiates a full `FantasyBot` (hits ESPN API); if credentials are stale it will 500 — this is acceptable for the non-critical last-run display.
 
 ### 2026-02-23 — Fix ESPN transaction body/headers from real browser capture
 

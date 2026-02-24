@@ -242,6 +242,19 @@ class FantasyBot:
                         return value[key]
         return int(self.context.get("tracking", {}).get("weekly_transactions_used", 0))
 
+    def _reset_counter_if_new_week(self) -> None:
+        """Reset weekly transaction counter if we've crossed into a new scoring week."""
+        last_run_str = self.context.get("tracking", {}).get("last_run_utc", "")
+        if not last_run_str:
+            return
+        try:
+            last_run = datetime.fromisoformat(last_run_str)
+            today = datetime.now(timezone.utc)
+            if last_run.isocalendar()[1] != today.isocalendar()[1] or last_run.year != today.year:
+                self.context.setdefault("tracking", {})["weekly_transactions_used"] = 0
+        except Exception:
+            pass
+
     def _weekly_transaction_limit(self) -> int:
         strategy_limit = self.context["strategy"]["tiered_streaming"].get("weekly_transaction_limit")
         if isinstance(strategy_limit, int):
@@ -528,6 +541,7 @@ class FantasyBot:
             return f"Lineup swap failed: {e}"
 
     def execute_streaming(self, dry_run: bool = True) -> list[str]:
+        self._reset_counter_if_new_week()
         actions: list[str] = []
         tier_3 = self.get_streaming_candidates()
         if not tier_3:
