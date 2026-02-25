@@ -55,6 +55,19 @@ Required env vars:
 
 ## Changelog
 
+### 2026-02-25 — README: live demo link + tech stack + deployment section
+
+**Why:** The repo page had no mention of the live deployment or tech stack — first-time visitors had no idea the bot was actually running publicly.
+
+**What changed:**
+- **`README.md`**: Added live demo badge/link below the description, new Tech Stack table (after Features), new Deployment section explaining the two-layer read-only safety model (after GitHub Actions), and `Procfile`/`railway.toml` entries in Project Structure.
+
+**How to test:** View README on GitHub — confirm live demo link is clickable, tech stack table renders, deployment section is accurate.
+
+**Gotchas:** None — documentation-only change, no code touched.
+
+---
+
 ### 2026-02-24 — Public read-only demo deployment config
 
 **Why:** Prepare the project to be hosted publicly (Railway backend + Vercel frontend) so others can view the live dashboard without being able to execute any ESPN mutations.

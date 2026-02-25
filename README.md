@@ -2,8 +2,7 @@
 
 ESPN Fantasy Basketball automation for a high-stakes H2H points season. The bot runs daily via GitHub Actions to manage IR slots, optimize your lineup, and stream free agents — with a web UI for on-demand control.
 
-Demo it here: https://fantasybasketballbot.vercel.app/
-- This show's my current team, and the changes I'm able to make!
+**[Live Demo →](https://fantasybasketballbot.vercel.app)** — read-only view of the live dashboard (no credentials needed)
 
 ## Features
 
@@ -13,6 +12,17 @@ Demo it here: https://fantasybasketballbot.vercel.app/
 - **Smart streaming** — evaluates free agents using `avg_points × games_remaining_this_week` so a FA with 3 games beats a roster player with 1 game even if per-game PPG is lower; FA pool of 50 players
 - **Protection guardrails** — untouchable list + rank threshold so core players are never dropped
 - **Web UI** — React dashboard with "Analyze roster", "Execute", and "Check lineup now" buttons; shows urgent swaps and no-game alerts
+
+## Tech Stack
+
+| Layer | Tech |
+|-------|------|
+| Bot logic | Python 3.11, [espn-api](https://github.com/cwendt94/espn-api) |
+| Backend API | FastAPI, Uvicorn |
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS |
+| Automation | GitHub Actions (2 workflows) |
+| Backend hosting | Railway (FastAPI, `DRY_RUN=True` for public safety) |
+| Frontend hosting | Vercel (static, `VITE_READ_ONLY=true`) |
 
 ## Setup
 
@@ -127,6 +137,40 @@ Runs `--mode=lineup-check` to catch last-minute injury scratches and bench idle 
 - `SWID`
 - `ESPN_S2`
 
+## Deployment
+
+The live demo uses a two-layer read-only safety model:
+
+```
+GitHub Actions (DRY_RUN=False) ──► ESPN API   ← real automation, unchanged
+
+Vercel (static frontend)
+  VITE_READ_ONLY=true  →  hides all Execute/Swap buttons
+  VITE_API_URL         →  points to Railway
+        ↓
+Railway (FastAPI backend)
+  DRY_RUN=True         →  /execute returns suggestions only, no ESPN mutations
+  CORS_ORIGINS=*
+```
+
+### Railway (backend)
+Set these env vars in the Railway dashboard:
+- `LEAGUE_ID`, `TEAM_ID`, `ESPN_S2`, `SWID`
+- `DRY_RUN=True`
+- `CORS_ORIGINS=*`
+
+Start command (auto-detected via `Procfile`):
+```
+uvicorn api.main:app --host 0.0.0.0 --port $PORT
+```
+
+### Vercel (frontend)
+Root directory: `web`
+
+Set these env vars:
+- `VITE_API_URL=https://your-railway-url.up.railway.app`
+- `VITE_READ_ONLY=true`
+
 ## Streaming Logic
 
 The streaming decision uses **week-remaining value** = `avg_points × games_remaining_this_week`:
@@ -164,6 +208,8 @@ fantasybasketballbot/
 ├── requirements.txt         # Python dependencies
 ├── CAPTURE_LINEUP.md        # How to capture ESPN lineup request from browser
 ├── CAPTURE_TRANSACTION.md   # How to capture ESPN add/drop request from browser
+├── Procfile                 # Railway start command
+├── railway.toml             # Railway build config
 └── .github/workflows/
     ├── daily_bot.yml        # Daily automation (3 AM EST)
     └── game_day_check.yml   # Pre-tip-off lineup check
