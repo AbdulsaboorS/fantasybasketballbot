@@ -2,13 +2,13 @@ name: Game-Day Lineup Check
 
 on:
   schedule:
-    # Every 30 minutes from 5pm–9pm EST (22:00–02:00 UTC), Mon–Sat.
-    # NBA games typically tip off between 7pm–10pm ET.
+    # Every 30 minutes from 5pm-9pm EST (22:00-02:00 UTC), Mon-Sat.
+    # NBA games typically tip off between 7pm-10pm ET.
     # GitHub cron doesn't support time ranges, so we use four entries.
-    - cron: '0,30 22 * * 1-6'   # 5:00pm & 5:30pm EST, Mon–Sat
-    - cron: '0,30 23 * * 1-6'   # 6:00pm & 6:30pm EST, Mon–Sat
-    - cron: '0,30 0 * * 2-7'    # 7:00pm & 7:30pm EST, Mon–Sat (next UTC day)
-    - cron: '0,30 1 * * 2-7'    # 8:00pm & 8:30pm EST, Mon–Sat (next UTC day)
+    - cron: '0,30 22 * * 1-6'   # 5:00pm & 5:30pm EST, Mon-Sat
+    - cron: '0,30 23 * * 1-6'   # 6:00pm & 6:30pm EST, Mon-Sat
+    - cron: '0,30 0 * * 2-7'    # 7:00pm & 7:30pm EST, Mon-Sat (next UTC day)
+    - cron: '0,30 1 * * 2-7'    # 8:00pm & 8:30pm EST, Mon-Sat (next UTC day)
   workflow_dispatch:             # Also allows manual trigger from GitHub UI
 
 jobs:
