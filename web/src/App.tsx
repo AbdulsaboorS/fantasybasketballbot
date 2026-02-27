@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { RefreshCw, Play, XCircle, Sparkles, Loader2, AlertTriangle, Clock } from 'lucide-react'
+import { RefreshCw, Play, XCircle, Sparkles, Loader2, AlertTriangle, Clock, Lock, Unlock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
@@ -235,7 +235,7 @@ function StreamingPanel({ items }: { items: string[] }) {
 
 // --- Game Day Alerts ---
 
-function SwapCard({ swap, onExecute, loading }: { swap: UrgentSwap; onExecute: (s: UrgentSwap) => void; loading: boolean }) {
+function SwapCard({ swap, onExecute, loading, canExecute }: { swap: UrgentSwap; onExecute: (s: UrgentSwap) => void; loading: boolean; canExecute: boolean }) {
   const isOut = swap.starter_status === 'OUT' || swap.starter_status === 'DOUBTFUL'
   const isNoGame = swap.starter_status === 'NO GAME'
   return (
@@ -256,7 +256,7 @@ function SwapCard({ swap, onExecute, loading }: { swap: UrgentSwap; onExecute: (
         <span className="text-[#00d4aa] font-medium text-sm">{swap.replacement_name}</span>
         <span className="text-[#8b949e] text-xs">({swap.replacement_ppg.toFixed(1)} PPG)</span>
       </div>
-      {!READ_ONLY && (
+      {canExecute && (
         <button
           onClick={() => onExecute(swap)}
           disabled={loading}
@@ -269,10 +269,11 @@ function SwapCard({ swap, onExecute, loading }: { swap: UrgentSwap; onExecute: (
   )
 }
 
-function GameDayAlerts({ lineupStatus, onExecuteSwap, loading }: {
+function GameDayAlerts({ lineupStatus, onExecuteSwap, loading, canExecute }: {
   lineupStatus: LineupStatus
   onExecuteSwap: (s: UrgentSwap) => void
   loading: boolean
+  canExecute: boolean
 }) {
   const { urgent_swaps, questionable, no_game_swaps = [] } = lineupStatus
   const totalAlerts = urgent_swaps.length + no_game_swaps.length
@@ -300,13 +301,13 @@ function GameDayAlerts({ lineupStatus, onExecuteSwap, loading }: {
       {urgent_swaps.length > 0 && (
         <div className="mb-3 space-y-1.5">
           <p className="text-[10px] text-[#8b949e] uppercase tracking-widest mb-1.5">Injury / status</p>
-          {urgent_swaps.map((s, i) => <SwapCard key={i} swap={s} onExecute={onExecuteSwap} loading={loading} />)}
+          {urgent_swaps.map((s, i) => <SwapCard key={i} swap={s} onExecute={onExecuteSwap} loading={loading} canExecute={canExecute} />)}
         </div>
       )}
       {no_game_swaps.length > 0 && (
         <div className="mb-3 space-y-1.5">
           <p className="text-[10px] text-[#8b949e] uppercase tracking-widest mb-1.5">No game today</p>
-          {no_game_swaps.map((s, i) => <SwapCard key={i} swap={s} onExecute={onExecuteSwap} loading={loading} />)}
+          {no_game_swaps.map((s, i) => <SwapCard key={i} swap={s} onExecute={onExecuteSwap} loading={loading} canExecute={canExecute} />)}
         </div>
       )}
       {questionable.length > 0 && (
@@ -338,6 +339,51 @@ function App() {
   const [lineupLoading, setLineupLoading] = useState(false)
   const [swapResult, setSwapResult] = useState<string | null>(null)
   const [lastRun, setLastRun] = useState<LastRunData | null>(null)
+
+  // Auth state
+  const [authToken, setAuthToken] = useState<string | null>(() => sessionStorage.getItem('auth_token'))
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [passwordInput, setPasswordInput] = useState('')
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [authLoading, setAuthLoading] = useState(false)
+
+  const isAuthenticated = authToken !== null
+  const canExecute = !READ_ONLY || isAuthenticated
+  const authHeaders: Record<string, string> = authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+
+  function handleAuthError() {
+    sessionStorage.removeItem('auth_token')
+    setAuthToken(null)
+    setError('Session expired. Please log in again.')
+  }
+
+  async function login() {
+    setAuthLoading(true)
+    setAuthError(null)
+    try {
+      const r = await fetch(`${API_BASE}/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: passwordInput }),
+      })
+      if (!r.ok) throw new Error('Incorrect password')
+      const data: { token: string | null; authenticated: boolean } = await r.json()
+      const token = data.token ?? 'no-password-set'
+      sessionStorage.setItem('auth_token', token)
+      setAuthToken(token)
+      setAuthModalOpen(false)
+      setPasswordInput('')
+    } catch {
+      setAuthError('Incorrect password')
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  function logout() {
+    sessionStorage.removeItem('auth_token')
+    setAuthToken(null)
+  }
 
   useEffect(() => { fetchLastRun() }, [])
 
@@ -388,13 +434,14 @@ function App() {
     try {
       const r = await fetch(`${API_BASE}/execute-lineup`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           starter_player_id: swap.starter_player_id,
           replacement_player_id: swap.replacement_player_id,
           starter_slot: swap.starter_slot,
         }),
       })
+      if (r.status === 401) { handleAuthError(); return }
       if (!r.ok) throw new Error(await r.text())
       const data: { success: boolean; message: string } = await r.json()
       setSwapResult(data.message)
@@ -413,9 +460,10 @@ function App() {
     try {
       const r = await fetch(`${API_BASE}/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ confirm: true }),
       })
+      if (r.status === 401) { handleAuthError(); return }
       if (!r.ok) throw new Error(await r.text())
       const data: { executed: boolean; actions: string[] } = await r.json()
       setExecuted(data.actions ?? [])
@@ -435,9 +483,10 @@ function App() {
     try {
       const r = await fetch(`${API_BASE}/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ generate_new: true }),
       })
+      if (r.status === 401) { handleAuthError(); return }
       if (!r.ok) throw new Error(await r.text())
       const data: { suggestions?: Suggestions } = await r.json()
       if (data.suggestions) setSuggestions(data.suggestions)
@@ -468,7 +517,7 @@ function App() {
                       {teamInfo.record}
                     </span>
                   )}
-                  {READ_ONLY && (
+                  {READ_ONLY && !isAuthenticated && (
                     <span className="rounded-full bg-[#161b22] border border-[#30363d] px-2.5 py-0.5 text-xs text-[#8b949e]">
                       View only
                     </span>
@@ -477,7 +526,7 @@ function App() {
               ) : (
                 <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-2xl font-bold tracking-tight text-white">Fantasy Bot</h1>
-                  {READ_ONLY && (
+                  {READ_ONLY && !isAuthenticated && (
                     <span className="rounded-full bg-[#161b22] border border-[#30363d] px-2.5 py-0.5 text-xs text-[#8b949e]">
                       View only
                     </span>
@@ -486,15 +535,29 @@ function App() {
               )}
               <p className="mt-0.5 text-sm text-[#8b949e]">ESPN Basketball · Auto-managed</p>
             </div>
-            {lastRun?.last_run_utc && (
-              <div className="text-right text-xs text-[#8b949e] flex-shrink-0">
-                <div className="flex items-center gap-1 justify-end mb-0.5">
-                  <Clock className="h-3 w-3" />
-                  <span>Last run</span>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {lastRun?.last_run_utc && (
+                <div className="text-right text-xs text-[#8b949e]">
+                  <div className="flex items-center gap-1 justify-end mb-0.5">
+                    <Clock className="h-3 w-3" />
+                    <span>Last run</span>
+                  </div>
+                  <span className="text-zinc-300 font-medium">{timeAgo(lastRun.last_run_utc)}</span>
                 </div>
-                <span className="text-zinc-300 font-medium">{timeAgo(lastRun.last_run_utc)}</span>
-              </div>
-            )}
+              )}
+              <button
+                onClick={() => isAuthenticated ? logout() : setAuthModalOpen(true)}
+                title={isAuthenticated ? 'Logged in — click to lock' : 'Log in to execute moves'}
+                className={cn(
+                  'rounded-md border p-2 transition-colors',
+                  isAuthenticated
+                    ? 'border-[#00d4aa]/40 bg-[#00d4aa]/10 text-[#00d4aa] hover:bg-[#00d4aa]/20'
+                    : 'border-[#30363d] bg-[#161b22] text-[#8b949e] hover:text-zinc-300 hover:bg-zinc-800'
+                )}
+              >
+                {isAuthenticated ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -516,7 +579,7 @@ function App() {
             {lineupLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4 text-amber-400" />}
             Check lineup now
           </button>
-          {hasSuggestions && !READ_ONLY && (
+          {hasSuggestions && canExecute && (
             <>
               <button
                 onClick={() => setConfirmOpen(true)}
@@ -582,7 +645,7 @@ function App() {
         {(suggestions || lineupStatus) && (
           <div className="space-y-4">
             {lineupStatus && (
-              <GameDayAlerts lineupStatus={lineupStatus} onExecuteSwap={executeSwap} loading={lineupLoading} />
+              <GameDayAlerts lineupStatus={lineupStatus} onExecuteSwap={executeSwap} loading={lineupLoading} canExecute={canExecute} />
             )}
             {suggestions && (
               <>
@@ -601,8 +664,52 @@ function App() {
         )}
       </div>
 
+      {/* Auth Modal */}
+      {authModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => { setAuthModalOpen(false); setPasswordInput(''); setAuthError(null) }}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-[#30363d] bg-[#161b22] p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Lock className="h-4 w-4 text-[#8b949e]" />
+              <h3 className="text-lg font-semibold text-white">Owner login</h3>
+            </div>
+            <p className="mb-4 text-sm text-[#8b949e]">Enter your password to unlock execute controls.</p>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && login()}
+              placeholder="Password"
+              autoFocus
+              className="w-full rounded-md border border-[#30363d] bg-[#0d1117] px-3 py-2 text-sm text-zinc-100 placeholder-[#8b949e] focus:outline-none focus:border-[#00d4aa]/50 mb-3"
+            />
+            {authError && <p className="text-xs text-red-400 mb-3">{authError}</p>}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setAuthModalOpen(false); setPasswordInput(''); setAuthError(null) }}
+                className="rounded-lg border border-[#30363d] px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={login}
+                disabled={authLoading || !passwordInput}
+                className="rounded-lg bg-[#00d4aa] px-4 py-2 text-sm font-semibold text-[#0d1117] hover:bg-[#00bfa0] disabled:opacity-50 transition-colors"
+              >
+                {authLoading ? <Loader2 className="inline h-4 w-4 animate-spin" /> : 'Unlock'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Confirm Modal */}
-      {confirmOpen && !READ_ONLY && (
+      {confirmOpen && canExecute && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
           onClick={() => setConfirmOpen(false)}

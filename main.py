@@ -271,6 +271,8 @@ class FantasyBot:
         actions: list[str] = []
         roster = list(getattr(self.team, "roster", []))
         
+        max_ir_slots = int(self.context.get("league", {}).get("max_ir_slots", 1))
+
         # Find players who should be moved TO IR (OUT status but not in IR slot)
         out_players = []
         for player in roster:
@@ -278,15 +280,23 @@ class FantasyBot:
             injury_status = str(getattr(player, "injuryStatus", "") or "").upper()
             if injury_status == "OUT" and slot not in {"IR", "IL"}:
                 out_players.append(player)
-        
+
         # Find players who should be activated FROM IR (healthy but in IR slot)
         healthy_in_ir = []
+        current_ir_count = 0
         for player in roster:
             slot = str(getattr(player, "lineupSlot", "")).upper()
             injury_status = str(getattr(player, "injuryStatus", "") or "").upper()
-            if slot in {"IR", "IL"} and injury_status in {"ACTIVE", "HEALTHY", ""}:
-                healthy_in_ir.append(player)
-        
+            if slot in {"IR", "IL"}:
+                current_ir_count += 1
+                if injury_status in {"ACTIVE", "HEALTHY", ""}:
+                    healthy_in_ir.append(player)
+
+        available_ir_slots = max(0, max_ir_slots - current_ir_count)
+        # Sort by PPG descending so we prioritize the most valuable injured player
+        out_players.sort(key=lambda p: getattr(p, "avg_points", 0) or 0, reverse=True)
+        out_players = out_players[:available_ir_slots]
+
         # Generate suggestions
         for player in out_players:
             actions.append(f"Move {player.name} to IR (currently OUT)")

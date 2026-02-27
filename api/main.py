@@ -11,14 +11,29 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import os
+import secrets
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from main import FantasyBot, DEFAULT_CONTEXT_PATH
 
 app = FastAPI(title="Fantasy Bot API", version="0.1.0")
+
+_API_PASSWORD = os.getenv("API_PASSWORD")
+_valid_tokens: set[str] = set()
+
+
+def _require_auth(authorization: str | None = Header(default=None)) -> None:
+    """If API_PASSWORD is set, require a valid bearer token."""
+    if not _API_PASSWORD:
+        return  # no password configured — open access (local dev)
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    token = authorization[len("Bearer "):].strip()
+    if token not in _valid_tokens:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 _cors_origins = os.getenv(
     "CORS_ORIGINS",
@@ -39,6 +54,10 @@ def get_bot() -> FantasyBot:
     return FantasyBot(context_path=ROOT / "context.json")
 
 
+class AuthBody(BaseModel):
+    password: str
+
+
 class ExecuteBody(BaseModel):
     confirm: bool = False
     generate_new: bool = False
@@ -48,6 +67,23 @@ class ExecuteLineupBody(BaseModel):
     starter_player_id: int
     replacement_player_id: int
     starter_slot: str = "BE"
+
+
+@app.post("/auth")
+def auth(body: AuthBody):
+    """Exchange a password for a session token.
+
+    Returns {"token": "<hex>", "authenticated": true} on success.
+    If API_PASSWORD is not set, returns {"token": null, "authenticated": true}
+    (open access — local dev).
+    """
+    if not _API_PASSWORD:
+        return {"token": None, "authenticated": True}
+    if body.password != _API_PASSWORD:
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    token = secrets.token_hex(32)
+    _valid_tokens.add(token)
+    return {"token": token, "authenticated": True}
 
 
 @app.get("/analyze")
@@ -73,7 +109,7 @@ def analyze():
 
 
 @app.post("/execute")
-def execute(body: ExecuteBody):
+def execute(body: ExecuteBody, _auth: None = Depends(_require_auth)):
     """Execute changes (confirm=True) or return new suggestions (generate_new=True)."""
     try:
         bot = get_bot()
@@ -119,7 +155,7 @@ def lineup_status():
 
 
 @app.post("/execute-lineup")
-def execute_lineup(body: ExecuteLineupBody):
+def execute_lineup(body: ExecuteLineupBody, _auth: None = Depends(_require_auth)):
     """Execute a single lineup swap (bench injured starter, promote replacement).
 
     Response: {"success": bool, "message": string}

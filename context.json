@@ -9,6 +9,7 @@
     "season_year": 2026,
     "league_id": "REPLACE_WITH_LEAGUE_ID",
     "team_id": "REPLACE_WITH_TEAM_ID",
+    "max_ir_slots": 1,
     "espn_auth": {
       "espn_s2": "REPLACE_WITH_ESPN_S2_COOKIE",
       "swid": "REPLACE_WITH_SWID_COOKIE"
