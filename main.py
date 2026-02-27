@@ -421,7 +421,12 @@ class FantasyBot:
             p for p in bench
             if str(getattr(p, "injuryStatus", "") or "").upper() not in UNAVAILABLE
         ]
-        healthy_bench_sorted = sorted(healthy_bench, key=self.points_value, reverse=True)
+        todays_teams = _get_todays_nba_team_ids()
+        healthy_bench_sorted = sorted(
+            [p for p in healthy_bench if _has_game_today(p, todays_teams)],
+            key=self.points_value,
+            reverse=True,
+        )
 
         urgent_swaps: list[dict] = []
         questionable: list[dict] = []
@@ -458,7 +463,6 @@ class FantasyBot:
                 })
 
         # No-game swaps: healthy starters whose pro team doesn't play today.
-        todays_teams = _get_todays_nba_team_ids()
         no_game_swaps: list[dict] = []
 
         for starter in starters:
