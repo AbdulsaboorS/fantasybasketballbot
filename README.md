@@ -61,6 +61,12 @@ The bot will never:
 
 ---
 
+## Why there's a website
+
+Honestly, mostly for fun. The bot works fine purely from the command line and GitHub Actions — but I wanted to actually *see* it working, watch the suggestions render in real time, and have something I could pull up and show people. Building the dashboard also pushed me to think about the UX of the data: how do you display a swap suggestion clearly? What does a "game day alert" look like visually? It turned a backend automation project into something that felt complete. The live demo is read-only for anyone who visits — no credentials, no risk of anything being changed — just the bot's view of the roster.
+
+---
+
 ## Tech Stack
 
 | Layer | Tech |
