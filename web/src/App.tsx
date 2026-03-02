@@ -509,30 +509,26 @@ function App() {
         <div className="mb-6 pb-4 border-b border-[#00d4aa]/20">
           <div className="flex items-start justify-between">
             <div>
-              {teamInfo ? (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-2xl font-bold tracking-tight text-white">{teamInfo.name}</h1>
-                  {teamInfo.record && (
-                    <span className="rounded-full bg-[#161b22] border border-[#30363d] px-2.5 py-0.5 text-xs font-semibold text-zinc-300">
-                      {teamInfo.record}
-                    </span>
-                  )}
-                  {READ_ONLY && !isAuthenticated && (
-                    <span className="rounded-full bg-[#161b22] border border-[#30363d] px-2.5 py-0.5 text-xs text-[#8b949e]">
-                      View only
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-2xl font-bold tracking-tight text-white">Fantasy Bot</h1>
-                  {READ_ONLY && !isAuthenticated && (
-                    <span className="rounded-full bg-[#161b22] border border-[#30363d] px-2.5 py-0.5 text-xs text-[#8b949e]">
-                      View only
-                    </span>
-                  )}
-                </div>
-              )}
+              {(() => {
+                const showTeam = teamInfo && (!READ_ONLY || isAuthenticated)
+                return (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h1 className="text-2xl font-bold tracking-tight text-white">
+                      {showTeam ? teamInfo!.name : 'Fantasy Bot'}
+                    </h1>
+                    {showTeam && teamInfo!.record && (
+                      <span className="rounded-full bg-[#161b22] border border-[#30363d] px-2.5 py-0.5 text-xs font-semibold text-zinc-300">
+                        {teamInfo!.record}
+                      </span>
+                    )}
+                    {READ_ONLY && !isAuthenticated && (
+                      <span className="rounded-full bg-[#161b22] border border-[#30363d] px-2.5 py-0.5 text-xs text-[#8b949e]">
+                        View only
+                      </span>
+                    )}
+                  </div>
+                )
+              })()}
               <p className="mt-0.5 text-sm text-[#8b949e]">ESPN Basketball · Auto-managed</p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
