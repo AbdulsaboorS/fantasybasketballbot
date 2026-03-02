@@ -23,8 +23,11 @@ Keep this team out of last place by automating lineup and streaming decisions wi
 - **Efficiency Gate:** Only drop a Tier 3 player when a free agent has at least **+15%** better points-league value using `avg_points` + `projected_avg_points`.
 
 ## Deployment Status
-- **Current Phase:** Pre-Deployment
-- **Readiness:** ESPN league connection verified (`Jarquavious Flash` roster visible). Streaming execute currently fails until captured transaction URL/body are set (see CAPTURE_TRANSACTION.md and claude.md).
+- **Current Phase:** Deployed
+- **Backend:** Railway — FastAPI, `DRY_RUN=True`, read-only for public
+- **Frontend:** Vercel — `VITE_READ_ONLY=true`, team name hidden until password login
+- **Automation:** GitHub Actions running (daily bot 3 AM EST + game-day check 5–9 PM EST)
+- **Execution gap:** Streaming add/drop and lineup swap execute require ESPN request captures (see `CAPTURE_TRANSACTION.md`, `CAPTURE_LINEUP.md`). Not yet configured — bot surfaces suggestions only.
 
 ## Run Log Template
 Update this section every run.

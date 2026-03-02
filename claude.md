@@ -47,11 +47,11 @@ There is no overlap: project state lives in PROJECT_CONTEXT, user/season narrati
 
 ## 5. Current work-in-progress (as of last handoff)
 
-- **Streaming add/drop** uses `espn_transactions.add_drop()`. The correct ESPN write host is **`lm-api-writes.fantasy.espn.com`** (not `lm-api.fantasy.espn.com`).
-- **Next step for the user:** Paste the captured **Request URL** and **Request body** (JSON) from a browser add/drop in DevTools. Once provided, the agent should:
-  1. Set default or env so the bot uses `lm-api-writes.fantasy.espn.com` and the correct path.
-  2. If the user provides the exact JSON body, create a body template with placeholders `{league_id}`, `{team_id}`, `{year}`, `{drop_player_id}`, `{add_player_id}` and wire it via `ESPN_TRANSACTION_URL` and `ESPN_TRANSACTION_BODY` or `ESPN_TRANSACTION_BODY_FILE`.
-- User is non-technical; prefer clear, stepwise instructions and ready-to-paste config snippets.
+**Project is feature-complete. No active development.**
+
+- Bot runs via GitHub Actions (daily + pre-tipoff). Suggestions work fully. Execution requires ESPN request captures that the user has chosen not to do — the bot will surface suggestions and game-day alerts but not auto-execute moves.
+- Live demo: Railway (backend) + Vercel (frontend, read-only). Team name hidden from public view; shows only after password login.
+- If a future agent picks this up: the only remaining gap is setting `ESPN_TRANSACTION_URL`/`ESPN_TRANSACTION_BODY` and `ESPN_LINEUP_URL`/`ESPN_LINEUP_BODY` env vars in Railway + GitHub Secrets. See `CAPTURE_TRANSACTION.md` and `CAPTURE_LINEUP.md` for instructions.
 
 ---
 

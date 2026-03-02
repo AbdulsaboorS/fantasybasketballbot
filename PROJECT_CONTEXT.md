@@ -55,6 +55,19 @@ Required env vars:
 
 ## Changelog
 
+### 2026-03-02 — Hide team name from public view
+
+**Why:** Team name was visible to anyone who clicked "Analyze roster" on the public Vercel demo.
+
+**What changed:**
+- **`web/src/App.tsx`**: Team name and record now only render when `!READ_ONLY || isAuthenticated`. Public visitors (READ_ONLY mode, not logged in) see "Fantasy Bot" as the title. After password login, real team name and record appear.
+
+**How to test:** Open the Vercel URL in incognito — title shows "Fantasy Bot". Log in with the owner password — title switches to the real team name.
+
+**Gotchas:** Team name is still returned by the `/analyze` API response; it's hidden only in the UI.
+
+---
+
 ### 2026-03-02 — Fix game-day filter: fail closed for replacement candidates
 
 **Why:** `_has_game_today()` returned `True` when `todays_teams` was empty (ESPN scoreboard API unavailable). For starters this is correct (don't bench them if unsure), but for *replacement candidates* it caused no-game players (e.g. Deandre Ayton) to appear as suggestions for injured starters.
