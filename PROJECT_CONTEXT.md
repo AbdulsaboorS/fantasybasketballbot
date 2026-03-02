@@ -55,6 +55,21 @@ Required env vars:
 
 ## Changelog
 
+### 2026-03-02 — Fix game-day filter: fail closed for replacement candidates
+
+**Why:** `_has_game_today()` returned `True` when `todays_teams` was empty (ESPN scoreboard API unavailable). For starters this is correct (don't bench them if unsure), but for *replacement candidates* it caused no-game players (e.g. Deandre Ayton) to appear as suggestions for injured starters.
+
+**What changed:**
+- **`main.py`**: Added `fallback: bool = True` parameter to `_has_game_today()`. Callers that filter *replacements* pass `fallback=False` so candidates are skipped when the schedule is unknown. Callers that check *starters* (should I bench?) still use the default `fallback=True`.
+- Three call sites updated in `check_lineup_status()`: `healthy_bench_sorted` filter (urgent swaps) and `bench_with_game` filter (no-game swaps).
+- **`README.md`**: Added "Before live execution" section explaining the one-time capture requirements. Added troubleshooting entries for expired cookies, no-game replacement bug, and execute not working.
+
+**How to test:**
+1. `python3 main.py --mode=lineup-check` — if ESPN scoreboard API is unreachable, urgent/no-game swaps should show zero replacements (not random bench players).
+2. With normal API access: injured starters should only suggest bench players whose teams are on today's scoreboard.
+
+**Gotchas:** The `fallback=False` path means: if the schedule API is down, zero urgent swaps are suggested for that run. This is intentional — better to miss a swap than to suggest a wrong one.
+
 ### 2026-02-25 — README: live demo link + tech stack + deployment section
 
 **Why:** The repo page had no mention of the live deployment or tech stack — first-time visitors had no idea the bot was actually running publicly.

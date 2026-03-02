@@ -47,14 +47,15 @@ def _get_todays_nba_team_ids() -> set[str]:
         return set()
 
 
-def _has_game_today(player: Any, todays_teams: set[str]) -> bool:
+def _has_game_today(player: Any, todays_teams: set[str], fallback: bool = True) -> bool:
     """Return True if the player's pro team plays today.
 
-    Defaults to True when the schedule is unavailable (empty set)
-    so callers never incorrectly bench a player due to an API outage.
+    fallback controls what to return when todays_teams is empty (schedule unavailable):
+    - True (default): don't penalise starters — keep them in the lineup when unsure.
+    - False: don't suggest replacements — skip candidates when unsure.
     """
     if not todays_teams:
-        return True  # schedule unavailable — don't penalise anyone
+        return fallback
     pro_team = str(getattr(player, "proTeam", "") or "").lower().strip()
     if not pro_team or pro_team in {"none", "fa", "free agent"}:
         return True  # unknown team — don't penalise
@@ -423,7 +424,7 @@ class FantasyBot:
         ]
         todays_teams = _get_todays_nba_team_ids()
         healthy_bench_sorted = sorted(
-            [p for p in healthy_bench if _has_game_today(p, todays_teams)],
+            [p for p in healthy_bench if _has_game_today(p, todays_teams, fallback=False)],
             key=self.points_value,
             reverse=True,
         )
@@ -474,7 +475,7 @@ class FantasyBot:
 
             # Find the highest-PPG healthy bench player who DOES play today.
             bench_with_game = sorted(
-                [p for p in healthy_bench if _has_game_today(p, todays_teams)],
+                [p for p in healthy_bench if _has_game_today(p, todays_teams, fallback=False)],
                 key=self.points_value,
                 reverse=True,
             )

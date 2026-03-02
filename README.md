@@ -215,15 +215,28 @@ fantasybasketballbot/
     └── game_day_check.yml   # Pre-tip-off lineup check
 ```
 
+## Before live execution
+
+Two one-time captures are required for the bot to actually move players (not just suggest):
+
+1. **Add/drop** — follow `CAPTURE_TRANSACTION.md` to record a real ESPN transaction from browser DevTools, then set `ESPN_TRANSACTION_URL` + `ESPN_TRANSACTION_BODY` (or `ESPN_TRANSACTION_BODY_FILE`) in your env / GitHub Secrets.
+2. **Lineup swap** — follow `CAPTURE_LINEUP.md` for the same process with lineup changes, then set `ESPN_LINEUP_URL` + `ESPN_LINEUP_BODY` (or `ESPN_LINEUP_BODY_FILE`).
+
+Without these, the bot runs in suggestion-only mode even when `DRY_RUN=False`.
+
 ## Troubleshooting
 
 **"Missing required setting 'LEAGUE_ID'"** — ensure `.env` exists with all required variables, or set env vars directly.
 
 **"Could not find team_id=X in league"** — verify `TEAM_ID` is correct for your league.
 
-**Bot shows suggestions but doesn't execute** — set `DRY_RUN=False`.
+**Bot shows suggestions but doesn't execute** — set `DRY_RUN=False`. Also ensure you've completed both captures in `CAPTURE_TRANSACTION.md` and `CAPTURE_LINEUP.md`.
+
+**Add/drop returns 401 or 403** — ESPN cookies (`ESPN_S2`, `SWID`) have expired. Re-capture them from your browser and update the env vars.
 
 **Lineup swap rejected by ESPN (409)** — slot IDs may differ from defaults. Capture a real lineup request per `CAPTURE_LINEUP.md` and set `ESPN_LINEUP_BODY_FILE`.
+
+**Replacement suggestions show players with no game today** — the ESPN scoreboard API failed to load the schedule. The bot now fails closed for replacements (skips them if schedule is unknown) so this should self-correct on the next run.
 
 ## License
 
